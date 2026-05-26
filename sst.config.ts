@@ -26,6 +26,12 @@ export default $config({
 
     // ── Next.js app: Lambda (SSR) + CloudFront (CDN) + S3 (static assets) ──
     const site = new sst.aws.Nextjs("GOLSCrew", {
+      domain: {
+        name: "crew.gols.co",
+        dns: false,
+        cert: "arn:aws:acm:us-east-1:801750394851:certificate/cff8e8f6-70ce-4344-ba23-d80bc5d732d9",
+      },
+
       // Link the uploads bucket so the Lambda has IAM access and the bucket
       // name is injected automatically via SST Resource bindings.
       link: [uploadsBucket],

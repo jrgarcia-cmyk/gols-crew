@@ -10,7 +10,7 @@ not commit `.env` or `.env.local`.
 Add these in GitHub under Settings > Secrets and variables > Actions > Variables:
 
 - `AWS_REGION`: `us-east-2`
-- `NEXT_PUBLIC_APP_URL`: `https://don2t4i2ldwqi.cloudfront.net`
+- `NEXT_PUBLIC_APP_URL`: `https://crew.gols.co`
 
 ## GitHub Secrets
 
