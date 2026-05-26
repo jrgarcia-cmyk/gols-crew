@@ -9,10 +9,10 @@ export default async function AdminLayout({
   await requireRole("ADMIN", "SUPER_ADMIN");
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="min-h-screen bg-gray-50 md:flex">
       <AdminSidebar />
-      <main className="flex-1 ml-60 overflow-y-auto">
-        <div className="max-w-7xl mx-auto px-6 py-8">{children}</div>
+      <main className="min-w-0 flex-1 pt-14 pb-20 md:ml-60 md:h-screen md:overflow-y-auto md:pt-0 md:pb-0">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 md:py-8">{children}</div>
       </main>
     </div>
   );

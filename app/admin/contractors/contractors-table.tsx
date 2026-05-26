@@ -137,7 +137,62 @@ export function ContractorsTable({ rows }: { rows: ContractorRow[] }) {
 
   return (
     <div className="relative">
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div className="space-y-3 md:hidden">
+        {sorted.map((c) => {
+          const isSelected = selected.has(c.id);
+          return (
+            <div
+              key={c.id}
+              className={`rounded-xl border bg-white p-4 shadow-sm transition-colors ${
+                isSelected ? "border-red-200 bg-red-50" : "border-gray-200"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleRow(c.id)}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <Avatar name={c.name} src={c.avatarUrl} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-gray-900">{c.name}</p>
+                      {c.legalName && <p className="truncate text-xs text-gray-400">{c.legalName}</p>}
+                    </div>
+                    <Badge variant={statusBadge(c.status)}>{c.status}</Badge>
+                  </div>
+
+                  <div className="mt-3 space-y-1 text-sm text-gray-600">
+                    <p className="truncate">{c.email}</p>
+                    {c.phone && <p className="text-xs text-gray-400">{c.phone}</p>}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {c.workerType && (
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${WORKER_TYPE_STYLES[c.workerType] ?? "bg-gray-100 text-gray-600"}`}>
+                          {c.workerType.charAt(0) + c.workerType.slice(1).toLowerCase()}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400">{c.assignmentCount} assigned</span>
+                    </div>
+                    <Link
+                      href={`/admin/contractors/${c.id}`}
+                      className="shrink-0 text-xs font-medium text-red-600"
+                    >
+                      View
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-gray-200 bg-white md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-left bg-gray-50">
@@ -223,12 +278,12 @@ export function ContractorsTable({ rows }: { rows: ContractorRow[] }) {
 
       {/* Floating bulk action bar */}
       <div
-        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ${
+        className={`fixed bottom-20 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 transition-all duration-200 md:bottom-6 md:w-auto ${
           someSelected ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         }`}
       >
-        <div className="flex items-center gap-2 bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-2xl">
-          <span className="text-sm font-semibold pr-2 border-r border-gray-700 mr-1">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-gray-900 px-3 py-3 text-white shadow-2xl md:flex-nowrap md:px-4">
+          <span className="w-full border-b border-gray-700 pb-2 text-sm font-semibold md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
             {selected.size} {selected.size === 1 ? "contractor" : "contractors"} selected
           </span>
 

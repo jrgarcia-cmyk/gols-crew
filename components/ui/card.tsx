@@ -20,7 +20,7 @@ export function Card({ children, className }: CardProps) {
 
 export function CardHeader({ children, className }: CardProps) {
   return (
-    <div className={cn("px-6 py-4 border-b border-gray-100", className)}>
+    <div className={cn("px-4 py-4 border-b border-gray-100 sm:px-6", className)}>
       {children}
     </div>
   );
@@ -35,14 +35,14 @@ export function CardTitle({ children, className }: CardProps) {
 }
 
 export function CardContent({ children, className }: CardProps) {
-  return <div className={cn("px-6 py-4", className)}>{children}</div>;
+  return <div className={cn("px-4 py-4 sm:px-6", className)}>{children}</div>;
 }
 
 export function CardFooter({ children, className }: CardProps) {
   return (
     <div
       className={cn(
-        "px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl",
+        "px-4 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl sm:px-6",
         className
       )}
     >
@@ -61,11 +61,11 @@ interface StatCardProps {
 
 export function StatCard({ label, value, icon, trend, className }: StatCardProps) {
   return (
-    <Card className={cn("p-6", className)}>
+    <Card className={cn("p-4 sm:p-6", className)}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-gray-500 font-medium">{label}</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{value}</p>
+          <p className="text-xs font-medium text-gray-500 sm:text-sm">{label}</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">{value}</p>
           {trend && <p className="text-xs text-gray-400 mt-1">{trend}</p>}
         </div>
         {icon && (

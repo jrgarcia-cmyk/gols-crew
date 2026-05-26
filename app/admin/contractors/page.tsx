@@ -51,22 +51,22 @@ export default async function AdminContractorsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Contractors</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Contractors</h1>
           <p className="text-gray-500 text-sm mt-1">{contractors.length} total</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 sm:justify-end">
           <Link href="/admin/contractors/import">
-            <Button variant="outline" size="sm">Import CSV</Button>
+            <Button variant="outline" size="sm" className="w-full sm:w-auto">Import CSV</Button>
           </Link>
         </div>
       </div>
 
       {/* Filters */}
       <div className="space-y-2">
-        <div className="flex gap-3 flex-wrap">
-          <form className="flex gap-2 flex-1 min-w-64">
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
+          <form className="flex w-full gap-2 lg:min-w-64 lg:flex-1">
             {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
             {typeFilter && <input type="hidden" name="type" value={typeFilter} />}
             <input
@@ -77,12 +77,12 @@ export default async function AdminContractorsPage({
             />
             <button
               type="submit"
-              className="h-9 px-3 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800"
+              className="h-9 shrink-0 rounded-lg bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800"
             >
               Search
             </button>
           </form>
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-1 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible lg:pb-0">
             {["", "PENDING", "ACTIVE", "INACTIVE", "FLAGGED"].map((s) => {
               const params = new URLSearchParams();
               if (s) params.set("status", s);
@@ -93,7 +93,7 @@ export default async function AdminContractorsPage({
                 <Link
                   key={s}
                   href={`/admin/contractors${qs ? `?${qs}` : ""}`}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     statusFilter === s
                       ? "bg-gray-900 text-white"
                       : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
@@ -106,7 +106,7 @@ export default async function AdminContractorsPage({
           </div>
         </div>
         {/* Type filter */}
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1 overflow-x-auto pb-1">
           <span className="text-xs text-gray-400 self-center mr-1">Type:</span>
           {["", "ADMIN", "STREAMER"].map((t) => {
             const params = new URLSearchParams();
@@ -118,7 +118,7 @@ export default async function AdminContractorsPage({
               <Link
                 key={t}
                 href={`/admin/contractors${qs ? `?${qs}` : ""}`}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   typeFilter === t
                     ? "bg-gray-900 text-white"
                     : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"

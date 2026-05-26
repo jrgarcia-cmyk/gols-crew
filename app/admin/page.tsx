@@ -34,9 +34,9 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Dashboard</h1>
           <p className="text-gray-500 text-sm mt-1">
             {new Date().toLocaleDateString("en-US", {
               weekday: "long",
@@ -48,7 +48,7 @@ export default async function AdminDashboardPage() {
         </div>
         <Link
           href="/app"
-          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 sm:shrink-0"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13zM3.5 12h2M18.5 12h2M12 3.5v2M12 18.5v2" />
@@ -58,7 +58,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard
           label="Total Contractors"
           value={contractorCount}
@@ -123,16 +123,16 @@ export default async function AdminDashboardPage() {
                 <Link
                   key={event.id}
                   href={`/admin/events/${event.id}`}
-                  className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors"
+                  className="flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between sm:px-6"
                 >
-                  <div>
-                    <p className="font-medium text-gray-900">{event.name}</p>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-gray-900">{event.name}</p>
                     <p className="text-sm text-gray-500 mt-0.5">
                       {formatDate(event.startDatetime)}
                       {event.venueName && ` · ${event.venueName}`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between gap-3 sm:justify-end">
                     <span className="text-sm text-gray-500">
                       {event._count.assignments} crew
                     </span>
@@ -150,7 +150,7 @@ export default async function AdminDashboardPage() {
       {/* Quick links */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
             { href: "/admin/contractors/import", label: "Import Contractors" },
             { href: "/admin/events", label: "Create Event" },
@@ -158,7 +158,7 @@ export default async function AdminDashboardPage() {
             { href: "/admin/payroll", label: "Export Payroll" },
           ].map((item) => (
             <Link key={item.href} href={item.href}>
-              <Card className="p-4 text-center hover:border-red-200 hover:bg-red-50 transition-colors cursor-pointer">
+              <Card className="p-3 text-center transition-colors hover:border-red-200 hover:bg-red-50 sm:p-4">
                 <p className="text-sm font-medium text-gray-700">{item.label}</p>
               </Card>
             </Link>
