@@ -76,6 +76,7 @@ export default async function AirtableSyncPage() {
           <p className="text-sm text-gray-500">
             Pull the latest events and staffing assignments from Airtable.
             Existing records will be updated; new records will be created.
+            Crew removed in Airtable will be removed here as well.
             Airtable is never modified — this is read-only.
           </p>
           <div className="flex gap-3">
