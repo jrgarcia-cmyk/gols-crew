@@ -15,14 +15,20 @@ export async function POST(request: NextRequest) {
     startTime,
     endTime,
     breakMinutes,
+    gamesCount,
     jobCategoryId,
     jobSubItemId,
     notes,
   } = body;
 
   // Contractors can only submit for themselves
-  if (user.role === "CONTRACTOR" && user.contractorId !== contractorId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (user.role === "CONTRACTOR") {
+    const ownContractor =
+      user.contractor ??
+      (await db.contractor.findUnique({ where: { email: user.email } }));
+    if (!ownContractor || ownContractor.id !== contractorId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   if (!contractorId) {
@@ -33,9 +39,32 @@ export async function POST(request: NextRequest) {
   const end = endTime ? new Date(endTime) : null;
 
   let totalHours: number | null = null;
-  if (start && end) {
+  let calculatedPay: number | null = null;
+  const parsedGames =
+    gamesCount !== undefined && gamesCount !== null ? parseInt(String(gamesCount), 10) : null;
+
+  if (parsedGames && parsedGames > 0) {
+    if (assignmentId) {
+      const assignment = await db.eventAssignment.findUnique({
+        where: { id: assignmentId },
+        select: { rateAmountSnapshot: true },
+      });
+      if (assignment?.rateAmountSnapshot) {
+        calculatedPay = parsedGames * Number(assignment.rateAmountSnapshot);
+      }
+    }
+  } else if (start && end) {
     const diffMs = end.getTime() - start.getTime();
     totalHours = Math.max(0, diffMs / (1000 * 60 * 60) - (breakMinutes ?? 0) / 60);
+    if (assignmentId && totalHours > 0) {
+      const assignment = await db.eventAssignment.findUnique({
+        where: { id: assignmentId },
+        select: { rateAmountSnapshot: true, payTypeSnapshot: true },
+      });
+      if (assignment?.rateAmountSnapshot && assignment.payTypeSnapshot === "HOURLY") {
+        calculatedPay = totalHours * Number(assignment.rateAmountSnapshot);
+      }
+    }
   }
 
   const timesheet = await db.timesheet.create({
@@ -49,7 +78,9 @@ export async function POST(request: NextRequest) {
       startTime: start,
       endTime: end,
       breakMinutes: breakMinutes ?? 0,
+      gamesCount: parsedGames && parsedGames > 0 ? parsedGames : null,
       totalHours: totalHours !== null ? totalHours : null,
+      calculatedPay: calculatedPay !== null ? calculatedPay : null,
       status: "DRAFT",
       notes: notes ?? null,
     },

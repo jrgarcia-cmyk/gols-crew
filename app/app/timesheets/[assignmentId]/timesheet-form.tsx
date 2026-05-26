@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import type { PayType } from "@/app/generated/prisma";
 
 interface TimesheetFormProps {
   assignmentId: string;
   eventId: string;
   contractorId: string;
   eventName: string;
+  payType: PayType;
+  rateAmount?: number | null;
   startDatetime?: string;
   endDatetime?: string;
 }
@@ -21,10 +24,13 @@ export function TimesheetForm({
   assignmentId,
   eventId,
   contractorId,
+  payType,
+  rateAmount,
   startDatetime,
   endDatetime,
 }: TimesheetFormProps) {
   const router = useRouter();
+  const perGame = payType === "PER_GAME";
   const [step, setStep] = useState<Step>("form");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -40,14 +46,22 @@ export function TimesheetForm({
   const [startTime, setStartTime] = useState(defaultStart);
   const [endTime, setEndTime] = useState(defaultEnd);
   const [breakMinutes, setBreakMinutes] = useState("0");
+  const [gamesCount, setGamesCount] = useState("1");
   const [notes, setNotes] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!startTime || !endTime) {
+    if (perGame) {
+      const games = parseInt(gamesCount, 10);
+      if (!games || games < 1) {
+        setError("Please enter how many games you worked.");
+        return;
+      }
+    } else if (!startTime || !endTime) {
       setError("Please enter both start and end times.");
       return;
     }
+
     setLoading(true);
     setError("");
 
@@ -58,16 +72,17 @@ export function TimesheetForm({
         assignmentId,
         eventId,
         contractorId,
-        startTime,
-        endTime,
-        breakMinutes: parseInt(breakMinutes) || 0,
+        startTime: perGame ? undefined : startTime,
+        endTime: perGame ? undefined : endTime,
+        breakMinutes: perGame ? 0 : parseInt(breakMinutes) || 0,
+        gamesCount: perGame ? parseInt(gamesCount, 10) : undefined,
         notes,
       }),
     });
 
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? "Failed to submit timesheet.");
+      setError(data.error ?? "Failed to submit.");
       setLoading(false);
       return;
     }
@@ -87,7 +102,9 @@ export function TimesheetForm({
             </svg>
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Timesheet Submitted!</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              {perGame ? "Games Submitted!" : "Timesheet Submitted!"}
+            </h2>
             <p className="text-gray-500 text-sm mt-1">
               Do you have any reimbursements to submit for this event?
             </p>
@@ -119,35 +136,56 @@ export function TimesheetForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <Input
-        label="Start Time"
-        type="datetime-local"
-        value={startTime}
-        onChange={(e) => setStartTime(e.target.value)}
-        required
-      />
-      <Input
-        label="End Time"
-        type="datetime-local"
-        value={endTime}
-        onChange={(e) => setEndTime(e.target.value)}
-        required
-      />
-      <Input
-        label="Break (minutes)"
-        type="number"
-        value={breakMinutes}
-        onChange={(e) => setBreakMinutes(e.target.value)}
-        min="0"
-        step="5"
-        hint="Enter 0 if no break was taken"
-      />
+      {perGame ? (
+        <>
+          {rateAmount != null && (
+            <Card className="p-4 text-sm text-gray-600">
+              Rate: ${rateAmount.toFixed(2)} per game
+            </Card>
+          )}
+          <Input
+            label="Number of Games"
+            type="number"
+            value={gamesCount}
+            onChange={(e) => setGamesCount(e.target.value)}
+            min="1"
+            step="1"
+            required
+          />
+        </>
+      ) : (
+        <>
+          <Input
+            label="Start Time"
+            type="datetime-local"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+            required
+          />
+          <Input
+            label="End Time"
+            type="datetime-local"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            required
+          />
+          <Input
+            label="Break (minutes)"
+            type="number"
+            value={breakMinutes}
+            onChange={(e) => setBreakMinutes(e.target.value)}
+            min="0"
+            step="5"
+            hint="Enter 0 if no break was taken"
+          />
+        </>
+      )}
       <div className="flex flex-col gap-1">
         <label className="text-sm font-medium text-gray-700">Notes (optional)</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Any notes about this shift..."
+          placeholder={perGame ? "Any notes about these games..." : "Any notes about this shift..."}
           rows={3}
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
         />
@@ -158,7 +196,7 @@ export function TimesheetForm({
         </p>
       )}
       <Button type="submit" fullWidth size="lg" loading={loading}>
-        Submit Timesheet
+        {perGame ? "Submit Games" : "Submit Timesheet"}
       </Button>
     </form>
   );

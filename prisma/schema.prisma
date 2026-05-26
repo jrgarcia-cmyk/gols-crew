@@ -25,6 +25,7 @@ enum ContractorStatus {
 
 enum PayType {
   HOURLY
+  PER_GAME
   DAY_RATE
   FLAT_RATE
   TRAVEL
@@ -244,6 +245,7 @@ model Event {
   startDatetime   DateTime    @map("start_datetime")
   endDatetime     DateTime?   @map("end_datetime")
   status          EventStatus @default(DRAFT)
+  payType         PayType     @default(HOURLY) @map("pay_type")
   notes           String?
   lastSyncedAt    DateTime?   @map("last_synced_at")
   syncStatus      String?     @map("sync_status")
@@ -328,6 +330,7 @@ model Timesheet {
   startTime     DateTime?       @map("start_time")
   endTime       DateTime?       @map("end_time")
   breakMinutes  Int             @default(0) @map("break_minutes")
+  gamesCount    Int?            @map("games_count")
   totalHours    Decimal?        @map("total_hours") @db.Decimal(6, 2)
   calculatedPay Decimal?        @map("calculated_pay") @db.Decimal(10, 2)
   status        TimesheetStatus @default(DRAFT)

@@ -15,7 +15,8 @@ const STATUS_OPTIONS = [
 
 const PAY_TYPE_OPTIONS = [
   { value: "", label: "— None —" },
-  { value: "HOURLY", label: "Hourly" },
+  { value: "HOURLY", label: "Per Hour" },
+  { value: "PER_GAME", label: "Per Game" },
   { value: "DAY_RATE", label: "Day Rate" },
   { value: "FLAT_RATE", label: "Flat Rate" },
   { value: "TRAVEL", label: "Travel" },

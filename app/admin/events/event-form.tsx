@@ -14,6 +14,11 @@ const STATUS_OPTIONS = [
   { value: "CANCELLED", label: "Cancelled" },
 ];
 
+const PAY_TYPE_OPTIONS = [
+  { value: "HOURLY", label: "Per Hour" },
+  { value: "PER_GAME", label: "Per Game" },
+];
+
 export interface EventFormValues {
   name: string;
   client: string;
@@ -23,6 +28,7 @@ export interface EventFormValues {
   startDatetime: string;
   endDatetime: string;
   status: string;
+  payType: string;
   notes: string;
 }
 
@@ -53,6 +59,7 @@ export function EventForm({
     startDatetime: toDatetimeLocal(initialValues?.startDatetime),
     endDatetime: toDatetimeLocal(initialValues?.endDatetime),
     status: initialValues?.status ?? "DRAFT",
+    payType: initialValues?.payType ?? "HOURLY",
     notes: initialValues?.notes ?? "",
   });
 
@@ -136,6 +143,12 @@ export function EventForm({
               value={form.status}
               onChange={(e) => set("status", e.target.value)}
               options={STATUS_OPTIONS}
+            />
+            <Select
+              label="Pay Type"
+              value={form.payType}
+              onChange={(e) => set("payType", e.target.value)}
+              options={PAY_TYPE_OPTIONS}
             />
           </div>
         </CardContent>

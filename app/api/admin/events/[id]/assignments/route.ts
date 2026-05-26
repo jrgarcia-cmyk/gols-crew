@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
+import { pickContractorRate, rateSnapshotFromRate } from "@/lib/rates";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(
@@ -32,23 +33,31 @@ export async function POST(
     );
   }
 
-  // Snapshot the rate if one was selected
+  // Snapshot the rate if one was selected, otherwise match event pay type
   let rateSnapshot: {
     selectedRateId?: string;
     rateLabelSnapshot?: string;
-    payTypeSnapshot?: never;
+    payTypeSnapshot?: import("@/app/generated/prisma").PayType;
     rateAmountSnapshot?: number;
   } = {};
+
+  const event = await db.event.findUnique({
+    where: { id: eventId },
+    select: { payType: true },
+  });
 
   if (body.rateId) {
     const rate = await db.contractorRate.findUnique({ where: { id: body.rateId } });
     if (rate) {
-      rateSnapshot = {
-        selectedRateId: rate.id,
-        rateLabelSnapshot: rate.label,
-        payTypeSnapshot: rate.payType as never,
-        rateAmountSnapshot: Number(rate.rateAmount),
-      };
+      rateSnapshot = rateSnapshotFromRate(rate);
+    }
+  } else if (event) {
+    const rates = await db.contractorRate.findMany({
+      where: { contractorId: body.contractorId, active: true },
+    });
+    const rate = pickContractorRate(rates, event.payType, body.role);
+    if (rate) {
+      rateSnapshot = rateSnapshotFromRate(rate);
     }
   }
 

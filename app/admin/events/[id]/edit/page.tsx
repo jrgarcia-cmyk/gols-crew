@@ -41,6 +41,7 @@ export default async function EditEventPage({
           startDatetime: event.startDatetime.toISOString(),
           endDatetime: event.endDatetime?.toISOString() ?? "",
           status: event.status,
+          payType: event.payType,
           notes: event.notes ?? "",
         }}
       />

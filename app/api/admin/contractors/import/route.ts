@@ -144,6 +144,7 @@ function buildContractorData(mapped: Record<string, string | undefined>) {
   };
   const payTypeMap: Record<string, string> = {
     hourly: "HOURLY", day_rate: "DAY_RATE", "day rate": "DAY_RATE",
+    per_game: "PER_GAME", "per game": "PER_GAME", game: "PER_GAME",
     flat_rate: "FLAT_RATE", "flat rate": "FLAT_RATE", travel: "TRAVEL", admin: "ADMIN",
   };
 
