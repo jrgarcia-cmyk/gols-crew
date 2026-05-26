@@ -1,6 +1,5 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ensureStaffingSynced } from "@/lib/ensure-staffing-sync";
 import { formatDate } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -96,7 +95,6 @@ export default async function AdminEventsPage({
   searchParams: Promise<{ q?: string; view?: string; sort?: string; dir?: string }>;
 }) {
   await requireRole("ADMIN", "SUPER_ADMIN");
-  await ensureStaffingSynced();
   const sp = await searchParams;
   const search = sp.q ?? "";
   const view: EventView = isEventView(sp.view) ? sp.view : "upcoming";

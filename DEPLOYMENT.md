@@ -24,14 +24,6 @@ Add these in GitHub under Settings > Secrets and variables > Actions > Secrets:
 - `DATABASE_URL`
 - `AIRTABLE_API_KEY`
 - `AIRTABLE_BASE_ID`
-- `CRON_SECRET`
-
-## Background staffing sync
-
-Production runs an EventBridge cron every 5 minutes that calls
-`/api/cron/airtable-staffing` to reconcile crew assignments with Airtable.
-Generate a random `CRON_SECRET` (for example with `openssl rand -hex 32`) and
-add it to GitHub Actions secrets and your local `.env` for deploys.
 
 ## Manual Deploy
 

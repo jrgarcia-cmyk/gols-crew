@@ -1,6 +1,5 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ensureStaffingSynced } from "@/lib/ensure-staffing-sync";
 import { notFound } from "next/navigation";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
@@ -15,7 +14,6 @@ export default async function ManagerEventDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireRole("MANAGER", "ADMIN", "SUPER_ADMIN");
-  await ensureStaffingSynced();
   const { id } = await params;
 
   const event = await db.event.findUnique({
