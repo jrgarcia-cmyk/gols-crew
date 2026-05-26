@@ -5,6 +5,7 @@ import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { PAY_TYPE_LABELS } from "@/lib/pay-type";
 import Link from "next/link";
 
 export default async function AdminContractorDetailPage({
@@ -136,7 +137,7 @@ export default async function AdminContractorDetailPage({
                     <div key={rate.id} className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{rate.label}</p>
-                        <p className="text-xs text-gray-500">{rate.payType.replace("_", " ")}</p>
+                        <p className="text-xs text-gray-500">{PAY_TYPE_LABELS[rate.payType]}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-bold text-gray-900">

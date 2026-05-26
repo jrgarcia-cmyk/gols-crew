@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { PAY_TYPE_LABELS } from "@/lib/pay-type";
 import { refreshEventStaffing } from "@/services/airtable-staffing-sync";
 import { notFound } from "next/navigation";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
@@ -82,6 +83,7 @@ export default async function AdminEventDetailPage({
               {event.venueName && <InfoRow label="Venue" value={event.venueName} />}
               {event.address && <InfoRow label="Address" value={event.address} />}
               {event.eventType && <InfoRow label="Type" value={event.eventType} />}
+              <InfoRow label="Pay Type" value={PAY_TYPE_LABELS[event.payType]} />
               {event.airtableEventId && (
                 <InfoRow label="Airtable ID" value={event.airtableEventId} />
               )}

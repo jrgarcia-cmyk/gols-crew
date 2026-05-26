@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth";
+import { resolveContractorForUser } from "@/lib/contractor";
 import { db } from "@/lib/db";
 import { getLiveAssignmentsForContractorEmail } from "@/lib/airtable-staffing-live";
 import { isAirtableConfigured } from "@/services/airtable";
@@ -10,10 +11,7 @@ import Link from "next/link";
 
 export default async function ContractorEventsPage() {
   const user = await requireRole("CONTRACTOR");
-
-  const contractor =
-    user.contractor ??
-    (await db.contractor.findUnique({ where: { email: user.email } }));
+  const contractor = await resolveContractorForUser(user);
 
   const liveAssignments = contractor && isAirtableConfigured()
     ? await getLiveAssignmentsForContractorEmail(contractor.email)

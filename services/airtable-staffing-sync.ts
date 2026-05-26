@@ -1,5 +1,7 @@
 import { cache } from "react";
 import { db } from "@/lib/db";
+import { pickContractorRate, rateSnapshotFromRate } from "@/lib/rates";
+import type { PayType } from "@/app/generated/prisma";
 import {
   type AirtableAssignment,
   type AirtableContractor,
@@ -38,16 +40,30 @@ type DbContractor = {
 };
 
 async function loadContractorLookups() {
-  const contractors = await db.contractor.findMany({
-    select: {
-      id: true,
-      email: true,
-      phone: true,
-      countryCode: true,
-      firstName: true,
-      lastName: true,
-    },
-  });
+  const [contractors, rates] = await Promise.all([
+    db.contractor.findMany({
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        countryCode: true,
+        firstName: true,
+        lastName: true,
+      },
+    }),
+    db.contractorRate.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        contractorId: true,
+        label: true,
+        role: true,
+        payType: true,
+        rateAmount: true,
+        isDefault: true,
+      },
+    }),
+  ]);
 
   const byEmail = new Map<string, DbContractor>();
   const byName = new Map<string, DbContractor>();
@@ -59,7 +75,14 @@ async function loadContractorLookups() {
     );
   }
 
-  return { contractors, byEmail, byName };
+  const ratesByContractorId = new Map<string, typeof rates>();
+  for (const rate of rates) {
+    const list = ratesByContractorId.get(rate.contractorId) ?? [];
+    list.push(rate);
+    ratesByContractorId.set(rate.contractorId, list);
+  }
+
+  return { contractors, byEmail, byName, ratesByContractorId };
 }
 
 function findContractorInMemory(
@@ -101,7 +124,7 @@ function findContractorInMemory(
 
 async function syncAssignmentsForEvents(
   assignments: AirtableAssignment[],
-  eventsByAirtableId: Map<string, { id: string }>,
+  eventsByAirtableId: Map<string, { id: string; payType: PayType }>,
   airtableContractorsById: Map<string, AirtableContractor>,
   contractorLookups: Awaited<ReturnType<typeof loadContractorLookups>>
 ): Promise<StaffingSyncResult> {
@@ -129,6 +152,10 @@ async function syncAssignmentsForEvents(
         continue;
       }
 
+      const contractorRates = contractorLookups.ratesByContractorId.get(contractor.id) ?? [];
+      const selectedRate = pickContractorRate(contractorRates, event.payType, assignment.role);
+      const rateSnapshot = selectedRate ? rateSnapshotFromRate(selectedRate) : {};
+
       await db.eventAssignment.upsert({
         where: { airtableAssignmentId: assignment.airtableId },
         create: {
@@ -139,6 +166,7 @@ async function syncAssignmentsForEvents(
           callTime: assignment.callTime,
           status: "CONFIRMED",
           notes: assignment.notes,
+          ...rateSnapshot,
         },
         update: {
           eventId: event.id,
@@ -147,6 +175,7 @@ async function syncAssignmentsForEvents(
           callTime: assignment.callTime,
           notes: assignment.notes,
           status: "CONFIRMED",
+          ...rateSnapshot,
         },
       });
       synced++;
@@ -163,7 +192,7 @@ async function syncAssignmentsForEvents(
 
 async function removeStaleSyncedAssignmentsForEvents(
   assignments: AirtableAssignment[],
-  eventsByAirtableId: Map<string, { id: string }>
+  eventsByAirtableId: Map<string, { id: string; payType: PayType }>
 ): Promise<number> {
   const currentIdsByEvent = new Map<string, Set<string>>();
   for (const assignment of assignments) {
@@ -193,7 +222,7 @@ async function removeStaleSyncedAssignmentsForEvents(
 export async function syncStaffingForEvent(eventAirtableId: string): Promise<StaffingSyncResult> {
   const event = await db.event.findUnique({
     where: { airtableEventId: eventAirtableId },
-    select: { id: true, airtableEventId: true },
+    select: { id: true, airtableEventId: true, payType: true },
   });
   if (!event?.airtableEventId) {
     return { synced: 0, skipped: 0, removed: 0, errors: [] };
@@ -207,7 +236,9 @@ export async function syncStaffingForEvent(eventAirtableId: string): Promise<Sta
   const airtableContractorsById = new Map(
     airtableContractors.map((contractor) => [contractor.airtableId, contractor])
   );
-  const eventsByAirtableId = new Map([[event.airtableEventId, { id: event.id }]]);
+  const eventsByAirtableId = new Map([
+    [event.airtableEventId, { id: event.id, payType: event.payType }],
+  ]);
 
   const result = await syncAssignmentsForEvents(
     assignments,
@@ -226,7 +257,7 @@ export async function syncStaffingFromAirtable(): Promise<StaffingSyncResult> {
     loadContractorLookups(),
     db.event.findMany({
       where: { airtableEventId: { not: null } },
-      select: { id: true, airtableEventId: true },
+      select: { id: true, airtableEventId: true, payType: true },
     }),
   ]);
   const airtableContractorsById = new Map(
@@ -234,7 +265,9 @@ export async function syncStaffingFromAirtable(): Promise<StaffingSyncResult> {
   );
   const eventsByAirtableId = new Map(
     linkedEvents.flatMap((event) =>
-      event.airtableEventId ? [[event.airtableEventId, { id: event.id }] as const] : []
+      event.airtableEventId
+        ? [[event.airtableEventId, { id: event.id, payType: event.payType }] as const]
+        : []
     )
   );
 

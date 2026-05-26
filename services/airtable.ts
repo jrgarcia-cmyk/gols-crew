@@ -67,6 +67,7 @@ export interface AirtableEvent {
   startDatetime: Date;
   endDatetime?: Date;
   status?: string;
+  payType?: string;
   notes?: string;
 }
 
@@ -133,6 +134,7 @@ function dateField(fields: Record<string, unknown>, names: string[], fallbackDat
   return undefined;
 }
 
+
 export async function fetchAirtableEvents(tableName = "Events"): Promise<AirtableEvent[]> {
   const records = await fetchAll(tableName);
   return records.map((r) => {
@@ -148,6 +150,7 @@ export async function fetchAirtableEvents(tableName = "Events"): Promise<Airtabl
       startDatetime: startStr ? new Date(startStr) : new Date(),
       endDatetime: f["End Date"] ? new Date(f["End Date"] as string) : undefined,
       status: f["Status"] as string | undefined,
+      payType: stringField(f, ["Pay Type", "Payment Type", "Pay Model", "Billing Type"]),
       notes: f["Notes"] as string | undefined,
     };
   });

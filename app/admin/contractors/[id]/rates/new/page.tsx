@@ -7,7 +7,8 @@ import { Input, Select } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const PAY_TYPE_OPTIONS = [
-  { value: "HOURLY", label: "Hourly" },
+  { value: "HOURLY", label: "Per Hour" },
+  { value: "PER_GAME", label: "Per Game" },
   { value: "DAY_RATE", label: "Day Rate" },
   { value: "FLAT_RATE", label: "Flat Rate" },
   { value: "TRAVEL", label: "Travel" },

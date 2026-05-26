@@ -18,6 +18,7 @@ export async function PATCH(
     startDatetime?: string;
     endDatetime?: string;
     status?: string;
+    payType?: string;
     notes?: string;
   };
 
@@ -32,6 +33,7 @@ export async function PATCH(
       ...(body.startDatetime && { startDatetime: new Date(body.startDatetime) }),
       endDatetime: body.endDatetime ? new Date(body.endDatetime) : null,
       ...(body.status && { status: body.status as never }),
+      ...(body.payType && { payType: body.payType as never }),
       notes: body.notes?.trim() || null,
     },
   });

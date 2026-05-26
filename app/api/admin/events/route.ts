@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
     startDatetime: string;
     endDatetime?: string;
     status?: string;
+    payType?: string;
     notes?: string;
   };
 
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       startDatetime: new Date(body.startDatetime),
       endDatetime: body.endDatetime ? new Date(body.endDatetime) : null,
       status: (body.status as never) ?? "DRAFT",
+      payType: (body.payType as never) ?? "HOURLY",
       notes: body.notes?.trim() || null,
     },
   });

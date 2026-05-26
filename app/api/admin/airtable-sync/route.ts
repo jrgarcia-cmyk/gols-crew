@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { parsePayType } from "@/lib/pay-type";
 import { syncStaffingFromAirtable } from "@/services/airtable-staffing-sync";
 import { fetchAirtableEvents } from "@/services/airtable";
 import { NextResponse } from "next/server";
@@ -25,6 +26,7 @@ export async function POST() {
         "in progress": "IN_PROGRESS",
       };
       const mappedStatus = statusMap[ae.status?.toLowerCase() ?? ""] ?? "DRAFT";
+      const mappedPayType = parsePayType(ae.payType);
 
       await db.event.upsert({
         where: { airtableEventId: ae.airtableId },
@@ -38,6 +40,7 @@ export async function POST() {
           startDatetime: ae.startDatetime,
           endDatetime: ae.endDatetime,
           status: mappedStatus as never,
+          payType: mappedPayType,
           notes: ae.notes,
           lastSyncedAt: now,
           syncStatus: "synced",
@@ -51,6 +54,7 @@ export async function POST() {
           startDatetime: ae.startDatetime,
           endDatetime: ae.endDatetime,
           status: mappedStatus as never,
+          payType: mappedPayType,
           notes: ae.notes,
           lastSyncedAt: now,
           syncStatus: "synced",
