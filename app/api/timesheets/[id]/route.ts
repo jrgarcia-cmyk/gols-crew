@@ -73,6 +73,7 @@ export async function PATCH(
     startTime,
     endTime,
     breakMinutes,
+    gamesCount,
     jobCategoryId,
     jobSubItemId,
     eventId,
@@ -82,29 +83,58 @@ export async function PATCH(
   const start = startTime ? new Date(startTime) : null;
   const end = endTime ? new Date(endTime) : null;
 
-  let totalHours: number | null = null;
-  if (start && end) {
+  let totalHours: number | null = existing.totalHours ? Number(existing.totalHours) : null;
+  let parsedGames =
+    gamesCount !== undefined && gamesCount !== null
+      ? parseInt(String(gamesCount), 10)
+      : existing.gamesCount;
+  let calculatedPay: number | null = existing.calculatedPay
+    ? Number(existing.calculatedPay)
+    : null;
+
+  if (parsedGames && parsedGames > 0) {
+    totalHours = null;
+    if (existing.assignmentId) {
+      const assignment = await db.eventAssignment.findUnique({
+        where: { id: existing.assignmentId },
+        select: { rateAmountSnapshot: true },
+      });
+      if (assignment?.rateAmountSnapshot) {
+        calculatedPay = parsedGames * Number(assignment.rateAmountSnapshot);
+      }
+    }
+  } else if (start && end) {
     const diffMs = end.getTime() - start.getTime();
     totalHours = Math.max(0, diffMs / (1000 * 60 * 60) - (breakMinutes ?? 0) / 60);
+    parsedGames = null;
+    if (existing.assignmentId && totalHours > 0) {
+      const assignment = await db.eventAssignment.findUnique({
+        where: { id: existing.assignmentId },
+        select: { rateAmountSnapshot: true, payTypeSnapshot: true },
+      });
+      if (assignment?.rateAmountSnapshot && assignment.payTypeSnapshot === "HOURLY") {
+        calculatedPay = totalHours * Number(assignment.rateAmountSnapshot);
+      }
+    }
   }
 
-  // If the entry was REJECTED, editing moves it back to DRAFT
   const newStatus = existing.status === "REJECTED" ? "DRAFT" : existing.status;
 
   const updated = await db.timesheet.update({
     where: { id },
     data: {
       entryDate: entryDate ? new Date(entryDate) : existing.entryDate,
-      startTime: start,
-      endTime: end,
+      startTime: parsedGames && parsedGames > 0 ? null : start,
+      endTime: parsedGames && parsedGames > 0 ? null : end,
       breakMinutes: breakMinutes ?? existing.breakMinutes,
-      totalHours: totalHours !== null ? totalHours : existing.totalHours,
+      gamesCount: parsedGames && parsedGames > 0 ? parsedGames : null,
+      totalHours: parsedGames && parsedGames > 0 ? null : totalHours,
+      calculatedPay,
       jobCategoryId: jobCategoryId || null,
       jobSubItemId: jobSubItemId || null,
       eventId: eventId || null,
       notes: notes ?? existing.notes,
       status: newStatus,
-      // Clear rejection metadata when moving back to DRAFT
       approvedById: newStatus === "DRAFT" ? null : existing.approvedById,
       approvedAt: newStatus === "DRAFT" ? null : existing.approvedAt,
     },

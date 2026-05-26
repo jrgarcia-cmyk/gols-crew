@@ -1,7 +1,17 @@
 import { requireRole } from "@/lib/auth";
+import { resolveContractorForUser } from "@/lib/contractor";
 import { db } from "@/lib/db";
+import {
+  formatTimesheetQuantity,
+  formatTimesheetRate,
+  formatWeekSummary,
+  getTimesheetEntryTotal,
+  getTimesheetPayType,
+} from "@/lib/timesheet-pay";
+import { isPerGamePayType, PAY_TYPE_LABELS } from "@/lib/pay-type";
 import { getWeekStart, shiftDate } from "@/lib/week";
 import { getWeekStartDay } from "@/lib/week-server";
+import { formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
@@ -35,7 +45,14 @@ async function fetchTimesheets(contractorId: string) {
   return db.timesheet.findMany({
     where: { contractorId },
     include: {
-      event: { select: { name: true } },
+      event: { select: { name: true, payType: true } },
+      assignment: {
+        select: {
+          payTypeSnapshot: true,
+          rateAmountSnapshot: true,
+          rateLabelSnapshot: true,
+        },
+      },
       jobCategory: { select: { name: true, color: true } },
       jobSubItem: { select: { name: true } },
     },
@@ -46,10 +63,7 @@ async function fetchTimesheets(contractorId: string) {
 
 export default async function ContractorTimesheetsPage() {
   const user = await requireRole("CONTRACTOR");
-
-  const contractor =
-    user.contractor ??
-    (await db.contractor.findUnique({ where: { email: user.email } }));
+  const contractor = await resolveContractorForUser(user);
 
   const [entries, weekStartDay] = await Promise.all([
     contractor ? fetchTimesheets(contractor.id) : Promise.resolve([]),
@@ -94,7 +108,6 @@ export default async function ContractorTimesheetsPage() {
         <div className="space-y-6">
           {weeks.map(([weekStart, group]) => {
             const weekEndStr = shiftDate(weekStart, 6);
-            const totalHours = group.reduce((sum, e) => sum + Number(e.totalHours ?? 0), 0);
             const draftEntries = group.filter((e) => e.status === "DRAFT");
             const allSubmitted = draftEntries.length === 0;
             const weekStatusLabel = allSubmitted
@@ -109,18 +122,16 @@ export default async function ContractorTimesheetsPage() {
 
             return (
               <div key={weekStart}>
-                {/* Week header */}
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate">
                       {formatDateShort(weekStart)} – {formatDateShort(weekEndStr)}
                     </p>
                     <span className="text-xs font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
-                      {totalHours.toFixed(2)} hrs
+                      {formatWeekSummary(group)}
                     </span>
                   </div>
 
-                  {/* Submit button for weeks with DRAFT entries */}
                   {contractor && draftEntries.length > 0 && (
                     <SubmitWeekButton
                       weekStart={weekStart}
@@ -135,7 +146,6 @@ export default async function ContractorTimesheetsPage() {
                   )}
                 </div>
 
-                {/* Draft notice */}
                 {draftEntries.length > 0 && (
                   <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
                     {draftEntries.length === group.length
@@ -144,84 +154,103 @@ export default async function ContractorTimesheetsPage() {
                   </p>
                 )}
 
-                {/* Entries */}
                 <div className="space-y-2">
-                  {group.map((entry) => (
-                    <Card key={entry.id} className={entry.status === "DRAFT" ? "border-dashed border-gray-300" : ""}>
-                      <CardContent className="py-3 px-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            {/* Job + sub-item */}
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {entry.jobCategory && (
-                                <span className="flex items-center gap-1.5">
-                                  <span
-                                    className="h-2 w-2 rounded-full shrink-0"
-                                    style={{ backgroundColor: entry.jobCategory.color ?? "#374151" }}
-                                  />
-                                  <span className="text-sm font-semibold text-gray-900">
-                                    {entry.jobCategory.name}
+                  {group.map((entry) => {
+                    const payType = getTimesheetPayType(entry);
+                    const perGame = isPerGamePayType(payType);
+                    const quantity = formatTimesheetQuantity(entry);
+                    const rate = formatTimesheetRate(entry);
+                    const entryTotal = getTimesheetEntryTotal(entry);
+
+                    return (
+                      <Card key={entry.id} className={entry.status === "DRAFT" ? "border-dashed border-gray-300" : ""}>
+                        <CardContent className="py-3 px-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {entry.jobCategory && (
+                                  <span className="flex items-center gap-1.5">
+                                    <span
+                                      className="h-2 w-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: entry.jobCategory.color ?? "#374151" }}
+                                    />
+                                    <span className="text-sm font-semibold text-gray-900">
+                                      {entry.jobCategory.name}
+                                    </span>
                                   </span>
-                                </span>
-                              )}
-                              {entry.jobSubItem && (
-                                <span className="text-sm text-gray-500">
-                                  › {entry.jobSubItem.name}
-                                </span>
-                              )}
-                              {!entry.jobCategory && entry.event && (
-                                <span className="text-sm font-semibold text-gray-900">{entry.event.name}</span>
-                              )}
-                              {!entry.jobCategory && !entry.event && (
-                                <span className="text-sm text-gray-400 italic">No job selected</span>
+                                )}
+                                {entry.jobSubItem && (
+                                  <span className="text-sm text-gray-500">
+                                    › {entry.jobSubItem.name}
+                                  </span>
+                                )}
+                                {!entry.jobCategory && entry.event && (
+                                  <span className="text-sm font-semibold text-gray-900">{entry.event.name}</span>
+                                )}
+                                {!entry.jobCategory && !entry.event && (
+                                  <span className="text-sm text-gray-400 italic">No job selected</span>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {formatDateShort(entry.entryDate ?? entry.createdAt)}
+                                {perGame ? (
+                                  <> · {PAY_TYPE_LABELS[payType]}</>
+                                ) : (
+                                  entry.startTime && (
+                                    <> · {formatTime(entry.startTime)} – {formatTime(entry.endTime)}</>
+                                  )
+                                )}
+                                {entry.event && entry.jobCategory && (
+                                  <> · {entry.event.name}</>
+                                )}
+                              </p>
+
+                              {(rate || quantity) && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {rate && <span>{rate}</span>}
+                                  {rate && quantity && <span> · </span>}
+                                  {quantity && <span>{quantity}</span>}
+                                </p>
                               )}
                             </div>
 
-                            {/* Date + times */}
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {formatDateShort(entry.entryDate ?? entry.createdAt)}
-                              {entry.startTime && (
-                                <> · {formatTime(entry.startTime)} – {formatTime(entry.endTime)}</>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              {entryTotal != null && (
+                                <span className="text-sm font-bold text-gray-900">
+                                  {formatCurrency(entryTotal)}
+                                </span>
                               )}
-                              {entry.event && entry.jobCategory && (
-                                <> · {entry.event.name}</>
+                              {quantity && entryTotal == null && (
+                                <span className="text-sm font-bold text-gray-900">{quantity}</span>
                               )}
+                              <Badge variant={statusBadge(entry.status)}>{entry.status}</Badge>
+                            </div>
+                          </div>
+
+                          {entry.notes && (
+                            <p className="text-xs text-gray-400 mt-1.5 border-t border-gray-50 pt-1.5">
+                              {entry.notes}
                             </p>
-                          </div>
+                          )}
 
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            {entry.totalHours && (
-                              <span className="text-sm font-bold text-gray-900">
-                                {Number(entry.totalHours).toFixed(2)}h
-                              </span>
-                            )}
-                            <Badge variant={statusBadge(entry.status)}>{entry.status}</Badge>
-                          </div>
-                        </div>
-
-                        {entry.notes && (
-                          <p className="text-xs text-gray-400 mt-1.5 border-t border-gray-50 pt-1.5">
-                            {entry.notes}
-                          </p>
-                        )}
-
-                        {/* Edit link for editable entries */}
-                        {EDITABLE_STATUSES.includes(entry.status) && (
-                          <div className="mt-2 pt-2 border-t border-gray-50">
-                            <Link
-                              href={`/app/timesheets/edit/${entry.id}`}
-                              className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-red-600 transition-colors w-fit"
-                            >
-                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                              </svg>
-                              Edit
-                            </Link>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
+                              {EDITABLE_STATUSES.includes(entry.status) && (
+                            <div className="mt-2 pt-2 border-t border-gray-50">
+                              <Link
+                                href={`/app/timesheets/edit/${entry.id}`}
+                                className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-red-600 transition-colors w-fit"
+                              >
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                                Edit
+                              </Link>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
             );

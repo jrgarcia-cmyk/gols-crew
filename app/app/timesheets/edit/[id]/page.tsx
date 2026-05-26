@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { notFound, redirect } from "next/navigation";
 import { TimeEntryForm, type InitialValues } from "@/app/app/timesheets/new/time-entry-form";
+import { GameEntryEditForm } from "../game-entry-form";
 import Link from "next/link";
 
 /** Extract HH:MM from a stored datetime */
@@ -42,10 +43,20 @@ export default async function EditTimesheetPage({
       startTime: true,
       endTime: true,
       breakMinutes: true,
+      gamesCount: true,
       jobCategoryId: true,
       jobSubItemId: true,
       eventId: true,
       notes: true,
+      assignment: {
+        select: {
+          payTypeSnapshot: true,
+          rateAmountSnapshot: true,
+        },
+      },
+      event: {
+        select: { payType: true },
+      },
     },
   });
 
@@ -56,32 +67,39 @@ export default async function EditTimesheetPage({
     redirect("/app/timesheets");
   }
 
-  const [categories, events] = await Promise.all([
-    db.jobCategory.findMany({
-      where: { active: true },
-      orderBy: [{ order: "asc" }, { name: "asc" }],
-      include: {
-        subItems: { where: { active: true }, orderBy: [{ order: "asc" }, { name: "asc" }] },
-      },
-    }),
-    db.event.findMany({
-      where: {
-        status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] },
-      },
-      orderBy: { startDatetime: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        name: true,
-        startDatetime: true,
-        assignments: {
-          where: { contractorId: contractor.id },
-          take: 1,
-          select: { id: true, role: true },
-        },
-      },
-    }),
-  ]);
+  const isGameEntry =
+    (entry.gamesCount ?? 0) > 0 ||
+    entry.assignment?.payTypeSnapshot === "PER_GAME" ||
+    entry.event?.payType === "PER_GAME";
+
+  const [categories, events] = isGameEntry
+    ? [null, null]
+    : await Promise.all([
+        db.jobCategory.findMany({
+          where: { active: true },
+          orderBy: [{ order: "asc" }, { name: "asc" }],
+          include: {
+            subItems: { where: { active: true }, orderBy: [{ order: "asc" }, { name: "asc" }] },
+          },
+        }),
+        db.event.findMany({
+          where: {
+            status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] },
+          },
+          orderBy: { startDatetime: "desc" },
+          take: 100,
+          select: {
+            id: true,
+            name: true,
+            startDatetime: true,
+            assignments: {
+              where: { contractorId: contractor.id },
+              take: 1,
+              select: { id: true, role: true },
+            },
+          },
+        }),
+      ]);
 
   const initialValues: InitialValues = {
     entryDate: extractDate(entry.entryDate),
@@ -103,7 +121,9 @@ export default async function EditTimesheetPage({
           </svg>
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Edit Entry</h1>
+          <h1 className="text-xl font-bold text-gray-900">
+            {isGameEntry ? "Edit Games" : "Edit Entry"}
+          </h1>
           {entry.status === "REJECTED" && (
             <p className="text-xs text-red-600 mt-0.5">
               This entry was rejected — fix and re-submit.
@@ -112,19 +132,32 @@ export default async function EditTimesheetPage({
         </div>
       </div>
 
-      <TimeEntryForm
-        contractorId={contractor.id}
-        categories={categories}
-        events={events.map((event) => ({
-          id: event.id,
-          name: event.name,
-          startDatetime: event.startDatetime,
-          role: event.assignments[0]?.role ?? null,
-          assignmentId: event.assignments[0]?.id ?? null,
-        }))}
-        timesheetId={entry.id}
-        initialValues={initialValues}
-      />
+      {isGameEntry ? (
+        <GameEntryEditForm
+          timesheetId={entry.id}
+          initialGamesCount={entry.gamesCount ?? 1}
+          initialNotes={entry.notes ?? ""}
+          rateAmount={
+            entry.assignment?.rateAmountSnapshot
+              ? Number(entry.assignment.rateAmountSnapshot)
+              : null
+          }
+        />
+      ) : (
+        <TimeEntryForm
+          contractorId={contractor.id}
+          categories={categories!}
+          events={events!.map((event) => ({
+            id: event.id,
+            name: event.name,
+            startDatetime: event.startDatetime,
+            role: event.assignments[0]?.role ?? null,
+            assignmentId: event.assignments[0]?.id ?? null,
+          }))}
+          timesheetId={entry.id}
+          initialValues={initialValues}
+        />
+      )}
     </div>
   );
 }
