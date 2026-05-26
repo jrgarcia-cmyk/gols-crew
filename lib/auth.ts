@@ -1,17 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import type { UserRole } from "@/app/generated/prisma";
 
-export async function getSession() {
+export const getSession = cache(async function getSession() {
   const supabase = await createClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
   return session;
-}
+});
 
-export async function getCurrentUser() {
+export const getCurrentUser = cache(async function getCurrentUser() {
   const session = await getSession();
   if (!session) return null;
 
@@ -21,7 +22,7 @@ export async function getCurrentUser() {
   });
 
   return user;
-}
+});
 
 export async function requireAuth() {
   const user = await getCurrentUser();
