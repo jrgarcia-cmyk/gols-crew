@@ -1,9 +1,12 @@
+import { cache } from "react";
 import { db } from "@/lib/db";
 import {
   type AirtableAssignment,
   type AirtableContractor,
   fetchAirtableAssignments,
+  fetchAirtableAssignmentsForEvent,
   fetchAirtableContractors,
+  isAirtableConfigured,
 } from "@/services/airtable";
 
 export interface StaffingSyncResult {
@@ -25,30 +28,63 @@ function nameParts(value: string | undefined) {
   };
 }
 
-async function findContractor(
+type DbContractor = {
+  id: string;
+  email: string;
+  phone: string | null;
+  countryCode: string | null;
+  firstName: string;
+  lastName: string;
+};
+
+async function loadContractorLookups() {
+  const contractors = await db.contractor.findMany({
+    select: {
+      id: true,
+      email: true,
+      phone: true,
+      countryCode: true,
+      firstName: true,
+      lastName: true,
+    },
+  });
+
+  const byEmail = new Map<string, DbContractor>();
+  const byName = new Map<string, DbContractor>();
+  for (const contractor of contractors) {
+    byEmail.set(contractor.email.toLowerCase(), contractor);
+    byName.set(
+      `${contractor.firstName.toLowerCase()}|${contractor.lastName.toLowerCase()}`,
+      contractor
+    );
+  }
+
+  return { contractors, byEmail, byName };
+}
+
+function findContractorInMemory(
   assignment: AirtableAssignment,
-  airtableContractorsById: Map<string, AirtableContractor>
+  airtableContractorsById: Map<string, AirtableContractor>,
+  byEmail: Map<string, DbContractor>,
+  byName: Map<string, DbContractor>,
+  contractors: DbContractor[]
 ) {
   const airtableContractor = assignment.contractorAirtableId
     ? airtableContractorsById.get(assignment.contractorAirtableId)
     : undefined;
   const email = (assignment.contractorEmail ?? airtableContractor?.email)?.toLowerCase();
   if (email) {
-    const contractor = await db.contractor.findUnique({ where: { email } });
-    if (contractor) return contractor;
+    const match = byEmail.get(email);
+    if (match) return match;
   }
 
   const phone = normalizePhone(assignment.contractorPhone ?? airtableContractor?.phone);
   if (phone) {
-    const candidates = await db.contractor.findMany({
-      where: { OR: [{ phone: { not: null } }, { countryCode: { not: null } }] },
-      select: { id: true, phone: true, countryCode: true },
-    });
-    const match = candidates.find((contractor) => {
+    const match = contractors.find((contractor) => {
       const contractorPhone = normalizePhone(`${contractor.countryCode ?? ""}${contractor.phone ?? ""}`);
       return contractorPhone.length > 0 && (contractorPhone.endsWith(phone) || phone.endsWith(contractorPhone));
     });
-    if (match) return db.contractor.findUnique({ where: { id: match.id } });
+    if (match) return match;
   }
 
   const fallbackName =
@@ -57,83 +93,37 @@ async function findContractor(
     [airtableContractor?.firstName, airtableContractor?.lastName].filter(Boolean).join(" ");
   const { firstName, lastName } = nameParts(fallbackName);
   if (firstName && lastName) {
-    return db.contractor.findFirst({
-      where: {
-        firstName: { equals: firstName, mode: "insensitive" },
-        lastName: { equals: lastName, mode: "insensitive" },
-      },
-    });
+    return byName.get(`${firstName.toLowerCase()}|${lastName.toLowerCase()}`);
   }
 
   return null;
 }
 
-function assignmentIdsByAirtableEvent(assignments: AirtableAssignment[]) {
-  const byEvent = new Map<string, Set<string>>();
-  for (const assignment of assignments) {
-    const ids = byEvent.get(assignment.eventAirtableId) ?? new Set<string>();
-    ids.add(assignment.airtableId);
-    byEvent.set(assignment.eventAirtableId, ids);
-  }
-  return byEvent;
-}
-
-async function removeStaleSyncedAssignments(
-  assignments: AirtableAssignment[]
-): Promise<number> {
-  const currentIdsByEvent = assignmentIdsByAirtableEvent(assignments);
-  const linkedEvents = await db.event.findMany({
-    where: { airtableEventId: { not: null } },
-    select: { id: true, airtableEventId: true },
-  });
-
-  let removed = 0;
-  for (const event of linkedEvents) {
-    const airtableEventId = event.airtableEventId!;
-    const currentIds = currentIdsByEvent.get(airtableEventId) ?? new Set<string>();
-    const result = await db.eventAssignment.deleteMany({
-      where: {
-        eventId: event.id,
-        airtableAssignmentId: { not: null },
-        ...(currentIds.size > 0
-          ? { NOT: { airtableAssignmentId: { in: [...currentIds] } } }
-          : {}),
-      },
-    });
-    removed += result.count;
-  }
-
-  return removed;
-}
-
-export function isAirtableConfigured() {
-  return !!(process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_BASE_ID);
-}
-
-export async function syncStaffingFromAirtable(): Promise<StaffingSyncResult> {
-  const [assignments, airtableContractors] = await Promise.all([
-    fetchAirtableAssignments(),
-    fetchAirtableContractors(),
-  ]);
-  const airtableContractorsById = new Map(
-    airtableContractors.map((contractor) => [contractor.airtableId, contractor])
-  );
-
+async function syncAssignmentsForEvents(
+  assignments: AirtableAssignment[],
+  eventsByAirtableId: Map<string, { id: string }>,
+  airtableContractorsById: Map<string, AirtableContractor>,
+  contractorLookups: Awaited<ReturnType<typeof loadContractorLookups>>
+): Promise<StaffingSyncResult> {
   let synced = 0;
   let skipped = 0;
   const errors: string[] = [];
 
   for (const assignment of assignments) {
     try {
-      const event = await db.event.findUnique({
-        where: { airtableEventId: assignment.eventAirtableId },
-      });
+      const event = eventsByAirtableId.get(assignment.eventAirtableId);
       if (!event) {
         skipped++;
         continue;
       }
 
-      const contractor = await findContractor(assignment, airtableContractorsById);
+      const contractor = findContractorInMemory(
+        assignment,
+        airtableContractorsById,
+        contractorLookups.byEmail,
+        contractorLookups.byName,
+        contractorLookups.contractors
+      );
       if (!contractor) {
         skipped++;
         continue;
@@ -168,7 +158,104 @@ export async function syncStaffingFromAirtable(): Promise<StaffingSyncResult> {
     }
   }
 
-  const removed = await removeStaleSyncedAssignments(assignments);
-
-  return { synced, skipped, removed, errors };
+  return { synced, skipped, removed: 0, errors };
 }
+
+async function removeStaleSyncedAssignmentsForEvents(
+  assignments: AirtableAssignment[],
+  eventsByAirtableId: Map<string, { id: string }>
+): Promise<number> {
+  const currentIdsByEvent = new Map<string, Set<string>>();
+  for (const assignment of assignments) {
+    const ids = currentIdsByEvent.get(assignment.eventAirtableId) ?? new Set<string>();
+    ids.add(assignment.airtableId);
+    currentIdsByEvent.set(assignment.eventAirtableId, ids);
+  }
+
+  let removed = 0;
+  for (const [airtableEventId, event] of eventsByAirtableId) {
+    const currentIds = currentIdsByEvent.get(airtableEventId) ?? new Set<string>();
+    const result = await db.eventAssignment.deleteMany({
+      where: {
+        eventId: event.id,
+        airtableAssignmentId: { not: null },
+        ...(currentIds.size > 0
+          ? { NOT: { airtableAssignmentId: { in: [...currentIds] } } }
+          : {}),
+      },
+    });
+    removed += result.count;
+  }
+
+  return removed;
+}
+
+export async function syncStaffingForEvent(eventAirtableId: string): Promise<StaffingSyncResult> {
+  const event = await db.event.findUnique({
+    where: { airtableEventId: eventAirtableId },
+    select: { id: true, airtableEventId: true },
+  });
+  if (!event?.airtableEventId) {
+    return { synced: 0, skipped: 0, removed: 0, errors: [] };
+  }
+
+  const [assignments, airtableContractors, contractorLookups] = await Promise.all([
+    fetchAirtableAssignmentsForEvent(eventAirtableId),
+    fetchAirtableContractors(),
+    loadContractorLookups(),
+  ]);
+  const airtableContractorsById = new Map(
+    airtableContractors.map((contractor) => [contractor.airtableId, contractor])
+  );
+  const eventsByAirtableId = new Map([[event.airtableEventId, { id: event.id }]]);
+
+  const result = await syncAssignmentsForEvents(
+    assignments,
+    eventsByAirtableId,
+    airtableContractorsById,
+    contractorLookups
+  );
+  result.removed = await removeStaleSyncedAssignmentsForEvents(assignments, eventsByAirtableId);
+  return result;
+}
+
+export async function syncStaffingFromAirtable(): Promise<StaffingSyncResult> {
+  const [assignments, airtableContractors, contractorLookups, linkedEvents] = await Promise.all([
+    fetchAirtableAssignments(),
+    fetchAirtableContractors(),
+    loadContractorLookups(),
+    db.event.findMany({
+      where: { airtableEventId: { not: null } },
+      select: { id: true, airtableEventId: true },
+    }),
+  ]);
+  const airtableContractorsById = new Map(
+    airtableContractors.map((contractor) => [contractor.airtableId, contractor])
+  );
+  const eventsByAirtableId = new Map(
+    linkedEvents.flatMap((event) =>
+      event.airtableEventId ? [[event.airtableEventId, { id: event.id }] as const] : []
+    )
+  );
+
+  const result = await syncAssignmentsForEvents(
+    assignments,
+    eventsByAirtableId,
+    airtableContractorsById,
+    contractorLookups
+  );
+  result.removed = await removeStaleSyncedAssignmentsForEvents(assignments, eventsByAirtableId);
+  return result;
+}
+
+export const refreshEventStaffing = cache(async (eventAirtableId: string | null | undefined) => {
+  if (!eventAirtableId || !isAirtableConfigured()) return;
+
+  try {
+    await syncStaffingForEvent(eventAirtableId);
+  } catch (err) {
+    console.error("Event staffing refresh failed:", err);
+  }
+});
+
+export { isAirtableConfigured };

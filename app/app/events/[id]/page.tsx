@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { refreshEventStaffing } from "@/services/airtable-staffing-sync";
 import { notFound } from "next/navigation";
 import { formatDate, formatDateTime, formatTime } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
@@ -13,6 +14,12 @@ export default async function ContractorEventDetailPage({
 }) {
   const { id } = await params;
   const user = await requireRole("CONTRACTOR");
+
+  const eventRecord = await db.event.findUnique({
+    where: { id },
+    select: { airtableEventId: true },
+  });
+  await refreshEventStaffing(eventRecord?.airtableEventId);
 
   const assignment = user.contractor
     ? await db.eventAssignment.findFirst({

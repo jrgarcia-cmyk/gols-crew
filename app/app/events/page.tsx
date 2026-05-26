@@ -1,5 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getLiveAssignmentsForContractorEmail } from "@/lib/airtable-staffing-live";
+import { isAirtableConfigured } from "@/services/airtable";
 import { formatDate, formatTime } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -13,13 +15,97 @@ export default async function ContractorEventsPage() {
     user.contractor ??
     (await db.contractor.findUnique({ where: { email: user.email } }));
 
-  const assignments = contractor
+  const liveAssignments = contractor && isAirtableConfigured()
+    ? await getLiveAssignmentsForContractorEmail(contractor.email)
+    : [];
+
+  const liveEventIds = liveAssignments.length
+    ? await db.event.findMany({
+        where: { airtableEventId: { in: [...new Set(liveAssignments.map((a) => a.eventAirtableId))] } },
+        select: { id: true, airtableEventId: true },
+      })
+    : [];
+
+  const liveEventsByAirtableId = new Map(
+    liveEventIds.flatMap((event) =>
+      event.airtableEventId ? [[event.airtableEventId, event.id] as const] : []
+    )
+  );
+
+  const dbAssignments = contractor
     ? await db.eventAssignment.findMany({
         where: { contractorId: contractor.id },
         include: { event: true },
         orderBy: { event: { startDatetime: "desc" } },
       })
     : [];
+
+  const liveRows = liveAssignments.flatMap((assignment) => {
+    const eventId = liveEventsByAirtableId.get(assignment.eventAirtableId);
+    if (!eventId) return [];
+    return [{
+      id: assignment.airtableId,
+      role: assignment.role ?? null,
+      callTime: assignment.callTime ?? null,
+      status: "CONFIRMED",
+      eventId,
+      eventAirtableId: assignment.eventAirtableId,
+    }];
+  });
+
+  const seenEventIds = new Set<string>();
+  const mergedAssignments = [
+    ...liveRows.map((row) => {
+      seenEventIds.add(row.eventId);
+      const dbMatch = dbAssignments.find((assignment) => assignment.eventId === row.eventId);
+      return {
+        id: dbMatch?.id ?? row.id,
+        role: row.role ?? dbMatch?.role ?? null,
+        callTime: row.callTime ?? dbMatch?.callTime ?? null,
+        status: dbMatch?.status ?? row.status,
+        event: dbMatch?.event ?? null,
+        eventId: row.eventId,
+        eventAirtableId: row.eventAirtableId,
+      };
+    }),
+    ...dbAssignments
+      .filter((assignment) => !seenEventIds.has(assignment.eventId))
+      .map((assignment) => ({
+        id: assignment.id,
+        role: assignment.role,
+        callTime: assignment.callTime,
+        status: assignment.status,
+        event: assignment.event,
+        eventId: assignment.eventId,
+        eventAirtableId: assignment.event.airtableEventId,
+      })),
+  ];
+
+  const eventsById = new Map(
+    (await db.event.findMany({
+      where: {
+        id: {
+          in: mergedAssignments
+            .filter((assignment) => !assignment.event)
+            .map((assignment) => assignment.eventId),
+        },
+      },
+    })).map((event) => [event.id, event])
+  );
+
+  const assignments = mergedAssignments
+    .map((assignment) => ({
+      id: assignment.id,
+      role: assignment.role,
+      callTime: assignment.callTime,
+      status: assignment.status,
+      event: assignment.event ?? eventsById.get(assignment.eventId)!,
+    }))
+    .filter((assignment) => assignment.event)
+    .sort(
+      (a, b) =>
+        new Date(b.event.startDatetime).getTime() - new Date(a.event.startDatetime).getTime()
+    );
 
   const upcoming = assignments.filter(
     (a) => new Date(a.event.startDatetime) >= new Date()
@@ -51,7 +137,7 @@ export default async function ContractorEventsPage() {
           </h2>
           <div className="space-y-3">
             {upcoming.map((a) => (
-              <EventCard key={a.id} assignment={a} />
+              <EventCard key={`${a.event.id}-${a.id}`} assignment={a} />
             ))}
           </div>
         </section>
@@ -64,7 +150,7 @@ export default async function ContractorEventsPage() {
           </h2>
           <div className="space-y-3">
             {past.map((a) => (
-              <EventCard key={a.id} assignment={a} />
+              <EventCard key={`${a.event.id}-${a.id}`} assignment={a} />
             ))}
           </div>
         </section>

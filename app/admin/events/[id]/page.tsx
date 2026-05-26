@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { refreshEventStaffing } from "@/services/airtable-staffing-sync";
 import { notFound } from "next/navigation";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
@@ -15,6 +16,12 @@ export default async function AdminEventDetailPage({
 }) {
   await requireRole("ADMIN", "SUPER_ADMIN");
   const { id } = await params;
+
+  const eventRecord = await db.event.findUnique({
+    where: { id },
+    select: { airtableEventId: true },
+  });
+  await refreshEventStaffing(eventRecord?.airtableEventId);
 
   const event = await db.event.findUnique({
     where: { id },

@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getLiveCrewCount, getLiveStaffingCountsByAirtableEventId } from "@/lib/airtable-staffing-live";
 import { formatDate } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -123,13 +124,18 @@ export default async function AdminEventsPage({
     },
     include: { _count: { select: { assignments: true } } },
   });
+  const liveStaffingCounts = await getLiveStaffingCountsByAirtableEventId();
 
   const sortedEvents = [...events].sort((a, b) => {
     let value = 0;
     if (sort === "name") value = a.name.localeCompare(b.name);
     if (sort === "date") value = a.startDatetime.getTime() - b.startDatetime.getTime();
     if (sort === "venue") value = (a.venueName ?? "").localeCompare(b.venueName ?? "");
-    if (sort === "crew") value = a._count.assignments - b._count.assignments;
+    if (sort === "crew") {
+      const crewA = getLiveCrewCount(a.airtableEventId, liveStaffingCounts, a._count.assignments);
+      const crewB = getLiveCrewCount(b.airtableEventId, liveStaffingCounts, b._count.assignments);
+      value = crewA - crewB;
+    }
     if (sort === "status") value = a.status.localeCompare(b.status);
     return dir === "asc" ? value : -value;
   });
@@ -144,9 +150,6 @@ export default async function AdminEventsPage({
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex">
-          <Link href="/admin/airtable-sync" className="min-w-0">
-            <Button variant="outline" size="sm" className="w-full sm:w-auto">Sync Airtable</Button>
-          </Link>
           <Link href="/admin/events/new" className="min-w-0">
             <Button size="sm" className="w-full sm:w-auto">+ New Event</Button>
           </Link>
@@ -228,10 +231,7 @@ export default async function AdminEventsPage({
           title="No events found"
           description="Confirmed and completed events matching this view will show here."
           action={
-            <div className="flex gap-2">
-              <Link href="/admin/airtable-sync"><Button variant="outline" size="sm">Sync Airtable</Button></Link>
-              <Link href="/admin/events/new"><Button size="sm">New Event</Button></Link>
-            </div>
+            <Link href="/admin/events/new"><Button size="sm">New Event</Button></Link>
           }
         />
       ) : (
@@ -257,7 +257,9 @@ export default async function AdminEventsPage({
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-400">Crew</p>
-                    <p className="mt-0.5 text-gray-700">{event._count.assignments}</p>
+                    <p className="mt-0.5 text-gray-700">
+                      {getLiveCrewCount(event.airtableEventId, liveStaffingCounts, event._count.assignments)}
+                    </p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-xs font-medium text-gray-400">Venue</p>
@@ -296,7 +298,7 @@ export default async function AdminEventsPage({
                       {event.venueName ?? "—"}
                     </td>
                     <td className="px-6 py-4 text-gray-600">
-                      {event._count.assignments}
+                      {getLiveCrewCount(event.airtableEventId, liveStaffingCounts, event._count.assignments)}
                     </td>
                     <td className="px-6 py-4">
                       <Badge variant={statusBadge(event.status)}>{event.status}</Badge>

@@ -13,7 +13,10 @@ interface AirtableResponse {
   offset?: string;
 }
 
-async function fetchAll(tableName: string): Promise<AirtableRecord[]> {
+async function fetchRecords(
+  tableName: string,
+  options?: { filterByFormula?: string }
+): Promise<AirtableRecord[]> {
   if (!AIRTABLE_API_KEY || !BASE_ID) {
     throw new Error("Airtable not configured. Set AIRTABLE_API_KEY and AIRTABLE_BASE_ID.");
   }
@@ -24,6 +27,9 @@ async function fetchAll(tableName: string): Promise<AirtableRecord[]> {
   do {
     const url = new URL(`${BASE_URL}/${encodeURIComponent(tableName)}`);
     if (offset) url.searchParams.set("offset", offset);
+    if (options?.filterByFormula) {
+      url.searchParams.set("filterByFormula", options.filterByFormula);
+    }
 
     const res = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
@@ -41,6 +47,14 @@ async function fetchAll(tableName: string): Promise<AirtableRecord[]> {
   } while (offset);
 
   return records;
+}
+
+async function fetchAll(tableName: string): Promise<AirtableRecord[]> {
+  return fetchRecords(tableName);
+}
+
+export function isAirtableConfigured() {
+  return !!(AIRTABLE_API_KEY && BASE_ID);
 }
 
 export interface AirtableEvent {
@@ -155,8 +169,7 @@ export async function fetchAirtableContractors(tableName = "All GOLS Contractors
   });
 }
 
-export async function fetchAirtableAssignments(tableName = "Stream Details"): Promise<AirtableAssignment[]> {
-  const records = await fetchAll(tableName);
+function parseAssignmentRecords(records: AirtableRecord[]): AirtableAssignment[] {
   return records.flatMap((r) => {
     const f = r.fields;
     const eventAirtableId = stringArrayField(f, ["Event Name", "Event", "Events"])[0] ?? "";
@@ -184,4 +197,24 @@ export async function fetchAirtableAssignments(tableName = "Stream Details"): Pr
       assignment.contractorName
     ));
   });
+}
+
+export async function fetchAirtableAssignments(tableName = "Stream Details"): Promise<AirtableAssignment[]> {
+  const records = await fetchAll(tableName);
+  return parseAssignmentRecords(records);
+}
+
+export async function fetchAirtableAssignmentsForEvent(
+  eventAirtableId: string,
+  tableName = "Stream Details"
+): Promise<AirtableAssignment[]> {
+  const formula = [
+    `{Event Name}='${eventAirtableId}'`,
+    `{Event}='${eventAirtableId}'`,
+    `{Events}='${eventAirtableId}'`,
+  ].join(", ");
+  const records = await fetchRecords(tableName, {
+    filterByFormula: `OR(${formula})`,
+  });
+  return parseAssignmentRecords(records);
 }

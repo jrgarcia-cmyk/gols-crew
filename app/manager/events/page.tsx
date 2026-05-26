@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getLiveCrewCount, getLiveStaffingCountsByAirtableEventId } from "@/lib/airtable-staffing-live";
 import { formatDate } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -20,6 +21,7 @@ export default async function ManagerEventsPage() {
     },
     orderBy: { startDatetime: "desc" },
   });
+  const liveStaffingCounts = await getLiveStaffingCountsByAirtableEventId();
 
   return (
     <div className="space-y-6">
@@ -44,7 +46,9 @@ export default async function ManagerEventsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-500">{event._count.assignments} crew</span>
+                  <span className="text-sm text-gray-500">
+                    {getLiveCrewCount(event.airtableEventId, liveStaffingCounts, event._count.assignments)} crew
+                  </span>
                   <Badge variant={statusBadge(event.status)}>{event.status}</Badge>
                 </div>
               </Link>
