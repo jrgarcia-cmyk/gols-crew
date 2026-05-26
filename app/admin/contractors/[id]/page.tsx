@@ -134,18 +134,29 @@ export default async function AdminContractorDetailPage({
               ) : (
                 <div className="space-y-2">
                   {contractor.rates.map((rate) => (
-                    <div key={rate.id} className="flex items-center justify-between">
-                      <div>
+                    <div key={rate.id} className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900">{rate.label}</p>
-                        <p className="text-xs text-gray-500">{PAY_TYPE_LABELS[rate.payType]}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-gray-900">
-                          {formatCurrency(Number(rate.rateAmount))}
+                        <p className="text-xs text-gray-500">
+                          {PAY_TYPE_LABELS[rate.payType]}
+                          {rate.role ? ` · ${rate.role}` : ""}
                         </p>
-                        {rate.isDefault && (
-                          <span className="text-xs text-green-600">Default</span>
-                        )}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-gray-900">
+                            {formatCurrency(Number(rate.rateAmount))}
+                          </p>
+                          {rate.isDefault && (
+                            <span className="text-xs text-green-600">Default</span>
+                          )}
+                        </div>
+                        <Link
+                          href={`/admin/contractors/${id}/rates/${rate.id}/edit`}
+                          className="text-xs text-red-600 font-medium hover:underline"
+                        >
+                          Edit
+                        </Link>
                       </div>
                     </div>
                   ))}
