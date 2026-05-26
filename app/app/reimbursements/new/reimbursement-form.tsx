@@ -62,7 +62,7 @@ export function ReimbursementForm({
         setLoading(false);
         return;
       }
-      const receiptUrl = uploadData.url;
+      const receiptUrl = uploadData.key ?? uploadData.url;
 
       // Submit reimbursement
       const res = await fetch("/api/reimbursements", {

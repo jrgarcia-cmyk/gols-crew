@@ -6,10 +6,8 @@ import { Button } from "@/components/ui/button";
 
 export function ReimbursementActions({
   reimbursementId,
-  receiptUrl,
 }: {
   reimbursementId: string;
-  receiptUrl: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
@@ -27,16 +25,6 @@ export function ReimbursementActions({
 
   return (
     <div className="flex gap-2 items-center">
-      {receiptUrl && (
-        <a
-          href={receiptUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-blue-600 hover:underline"
-        >
-          Receipt
-        </a>
-      )}
       <Button
         size="sm"
         variant="primary"

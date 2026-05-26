@@ -125,3 +125,39 @@ export async function deleteFromS3(key: string): Promise<void> {
     new DeleteObjectCommand({ Bucket: bucket, Key: key })
   );
 }
+
+/**
+ * Extract the S3 object key from a stored receipt value.
+ * Supports raw keys and legacy full CloudFront/S3 URLs.
+ */
+export function parseReceiptStorageKey(stored: string): string | null {
+  if (!stored) return null;
+  if (!stored.includes("://")) {
+    return stored.replace(/^\//, "");
+  }
+
+  try {
+    const key = new URL(stored).pathname.replace(/^\//, "");
+    return key || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a short-lived presigned GET URL for a private S3 object.
+ */
+export async function getPresignedDownloadUrl(
+  key: string,
+  expiresInSeconds = 3600
+): Promise<string> {
+  const bucket = getBucketName();
+  if (!bucket) throw new Error("S3 bucket name not configured.");
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+
+  return getSignedUrl(s3, command, { expiresIn: expiresInSeconds });
+}

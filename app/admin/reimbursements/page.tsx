@@ -60,6 +60,7 @@ export default async function AdminReimbursementsPage({
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Category</th>
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Amount</th>
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Receipt</th>
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -84,8 +85,20 @@ export default async function AdminReimbursementsPage({
                       <Badge variant={statusBadge(r.status)}>{r.status}</Badge>
                     </td>
                     <td className="px-6 py-4">
+                      {r.receiptUrl && (
+                        <a
+                          href={`/api/reimbursements/${r.id}/receipt`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          Receipt
+                        </a>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
                       {r.status === "SUBMITTED" && (
-                        <ReimbursementActions reimbursementId={r.id} receiptUrl={r.receiptUrl} />
+                        <ReimbursementActions reimbursementId={r.id} />
                       )}
                     </td>
                   </tr>
