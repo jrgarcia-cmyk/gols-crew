@@ -1,0 +1,554 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  CONTRACTOR
+  MANAGER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ContractorStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  FLAGGED
+}
+
+enum PayType {
+  HOURLY
+  DAY_RATE
+  FLAT_RATE
+  TRAVEL
+  ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  INVITED
+  CONFIRMED
+  DECLINED
+  COMPLETED
+  CANCELLED
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ReimbursementStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum PayrollExportStatus {
+  DRAFT
+  FINALIZED
+  EXPORTED
+}
+
+enum BonusStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ImportRowStatus {
+  PENDING
+  CREATED
+  UPDATED
+  SKIPPED
+  ERROR
+}
+
+enum WouldBookAgain {
+  YES
+  NO
+  MAYBE
+}
+
+enum IntakeStatus {
+  PENDING
+  REVIEWED
+  APPROVED
+  REJECTED
+}
+
+// ─── Core Users ───────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  supabaseId   String   @unique @map("supabase_id")
+  email        String   @unique
+  role         UserRole @default(CONTRACTOR)
+  contractorId String?  @unique @map("contractor_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  contractor             Contractor?         @relation(fields: [contractorId], references: [id])
+  approvedTimesheets     Timesheet[]         @relation("ApprovedTimesheets")
+  approvedReimbursements Reimbursement[]     @relation("ApprovedReimbursements")
+  ratings                ContractorRating[]  @relation("ManagerRatings")
+  payrollExports         PayrollExport[]
+  createdBonuses         Bonus[]             @relation("CreatedBonuses")
+  approvedBonuses        Bonus[]             @relation("ApprovedBonuses")
+  contractorImports      ContractorImport[]
+
+  @@map("users")
+}
+
+// ─── Contractors ──────────────────────────────────────────────────────────────
+
+model Contractor {
+  id                        String           @id @default(cuid())
+  // Name
+  firstName                 String           @map("first_name")
+  lastName                  String           @map("last_name")
+  preferredName             String?          @map("preferred_name")
+  // Contact
+  email                     String           @unique
+  countryCode               String?          @map("country_code")
+  phone                     String?
+  // Personal
+  birthday                  DateTime?
+  gender                    String?
+  // Address
+  addressLine1              String?          @map("address_line1")
+  addressLine2              String?          @map("address_line2")
+  city                      String?
+  state                     String?
+  zipCode                   String?          @map("zip_code")
+  // Profile
+  title                     String?
+  shirtSize                 String?          @map("shirt_size")
+  avatarUrl                 String?          @map("avatar_url")
+  // Employment
+  employmentStartDate       DateTime?        @map("employment_start_date")
+  employmentType            String?          @map("employment_type")
+  workerType                String?          @map("worker_type")
+  standardHours             Decimal?         @map("standard_hours") @db.Decimal(5, 2)
+  overtimeEligibility       Boolean          @default(false) @map("overtime_eligibility")
+  payType                   PayType?         @map("pay_type")
+  experienceLevel           String?          @map("experience_level")
+  travelWillingness         String?          @map("travel_willingness")
+  // IDs
+  externalWorkerId          String?          @map("external_worker_id")
+  evereeWorkerId            String?          @unique @map("everee_worker_id")
+  connecteamUserId          String?          @map("connecteam_user_id")
+  kioskCode                 String?          @map("kiosk_code")
+  // Everee / Payment
+  evereeEmployee            Boolean          @default(false) @map("everee_employee")
+  addedToEveree             Boolean          @default(false) @map("added_to_everee")
+  altPaymentMethod          String?          @map("alt_payment_method")
+  altPaymentUsername        String?          @map("alt_payment_username")
+  // Travel perks
+  closestAirport            String?          @map("closest_airport")
+  tsaPrecheck               String?          @map("tsa_precheck")
+  southwestRapidRewards     String?          @map("southwest_rapid_rewards")
+  frontierMiles             String?          @map("frontier_miles")
+  deltaSkymiles             String?          @map("delta_skymiles")
+  americanAirlinesAdvantage String?          @map("american_airlines_advantage")
+  // Onboarding / Org
+  status                    ContractorStatus @default(PENDING)
+  onboardingStatus          String?          @map("onboarding_status")
+  addedToSlack              Boolean          @default(false) @map("added_to_slack")
+  golsNinja                 Boolean          @default(false) @map("gols_ninja")
+  referredBy                String?          @map("referred_by")
+  groups                    String?
+  tags                      String?
+  // Equipment
+  hasComputer               Boolean          @default(false) @map("has_computer")
+  hasCellPhone              Boolean          @default(false) @map("has_cell_phone")
+  hasTablet                 Boolean          @default(false) @map("has_tablet")
+  // Emergency
+  emergencyContactName      String?          @map("emergency_contact_name")
+  emergencyContactPhone     String?          @map("emergency_contact_phone")
+  // Meta
+  source                    String?
+  addedVia                  String?          @map("added_via")
+  addedBy                   String?          @map("added_by")
+  lastLogin                 DateTime?        @map("last_login")
+  dateAdded                 DateTime?        @map("date_added")
+  notes                     String?
+  createdAt                 DateTime         @default(now()) @map("created_at")
+  updatedAt                 DateTime         @updatedAt @map("updated_at")
+
+  user           User?
+  rates          ContractorRate[]
+  assignments    EventAssignment[]
+  timesheets     Timesheet[]
+  reimbursements Reimbursement[]
+  ratings        ContractorRating[]
+  importRows     ContractorImportRow[]
+  bonuses        Bonus[]
+
+  @@map("contractors")
+}
+
+model ContractorRate {
+  id           String   @id @default(cuid())
+  contractorId String   @map("contractor_id")
+  label        String
+  role         String?
+  payType      PayType  @map("pay_type")
+  rateAmount   Decimal  @map("rate_amount") @db.Decimal(10, 2)
+  isDefault    Boolean  @default(false) @map("is_default")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  contractor  Contractor        @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  assignments EventAssignment[]
+
+  @@map("contractor_rates")
+}
+
+// ─── Events ───────────────────────────────────────────────────────────────────
+
+model Event {
+  id              String      @id @default(cuid())
+  airtableEventId String?     @unique @map("airtable_event_id")
+  name            String
+  client          String?
+  eventType       String?     @map("event_type")
+  venueName       String?     @map("venue_name")
+  address         String?
+  startDatetime   DateTime    @map("start_datetime")
+  endDatetime     DateTime?   @map("end_datetime")
+  status          EventStatus @default(DRAFT)
+  notes           String?
+  lastSyncedAt    DateTime?   @map("last_synced_at")
+  syncStatus      String?     @map("sync_status")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  assignments    EventAssignment[]
+  timesheets     Timesheet[]
+  reimbursements Reimbursement[]
+  ratings        ContractorRating[]
+  exportItems    PayrollExportItem[]
+  bonuses        Bonus[]
+
+  @@map("events")
+}
+
+model EventAssignment {
+  id                   String           @id @default(cuid())
+  airtableAssignmentId String?          @unique @map("airtable_assignment_id")
+  eventId              String           @map("event_id")
+  contractorId         String           @map("contractor_id")
+  role                 String?
+  selectedRateId       String?          @map("selected_rate_id")
+  rateLabelSnapshot    String?          @map("rate_label_snapshot")
+  payTypeSnapshot      PayType?         @map("pay_type_snapshot")
+  rateAmountSnapshot   Decimal?         @map("rate_amount_snapshot") @db.Decimal(10, 2)
+  callTime             DateTime?        @map("call_time")
+  status               AssignmentStatus @default(CONFIRMED)
+  notes                String?
+  createdAt            DateTime         @default(now()) @map("created_at")
+
+  event        Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  contractor   Contractor      @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  selectedRate ContractorRate? @relation(fields: [selectedRateId], references: [id])
+  timesheets   Timesheet[]
+
+  @@map("event_assignments")
+}
+
+// ─── Job Categories (Time Clock) ─────────────────────────────────────────────
+
+model JobCategory {
+  id        String       @id @default(cuid())
+  name      String
+  code      String?
+  color     String?
+  active    Boolean      @default(true)
+  order     Int          @default(0)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  subItems   JobSubItem[]
+  timesheets Timesheet[]
+
+  @@map("job_categories")
+}
+
+model JobSubItem {
+  id         String      @id @default(cuid())
+  categoryId String      @map("category_id")
+  name       String
+  active     Boolean     @default(true)
+  order      Int         @default(0)
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  category   JobCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  timesheets Timesheet[]
+
+  @@map("job_sub_items")
+}
+
+// ─── Timesheets ───────────────────────────────────────────────────────────────
+
+model Timesheet {
+  id            String          @id @default(cuid())
+  contractorId  String          @map("contractor_id")
+  eventId       String?         @map("event_id")
+  assignmentId  String?         @map("assignment_id")
+  entryDate     DateTime?       @map("entry_date")
+  jobCategoryId String?         @map("job_category_id")
+  jobSubItemId  String?         @map("job_sub_item_id")
+  startTime     DateTime?       @map("start_time")
+  endTime       DateTime?       @map("end_time")
+  breakMinutes  Int             @default(0) @map("break_minutes")
+  totalHours    Decimal?        @map("total_hours") @db.Decimal(6, 2)
+  calculatedPay Decimal?        @map("calculated_pay") @db.Decimal(10, 2)
+  status        TimesheetStatus @default(DRAFT)
+  submittedAt   DateTime?       @map("submitted_at")
+  approvedById  String?         @map("approved_by_id")
+  approvedAt    DateTime?       @map("approved_at")
+  notes         String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  contractor     Contractor       @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  event          Event?           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  assignment     EventAssignment? @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  jobCategory    JobCategory?     @relation(fields: [jobCategoryId], references: [id])
+  jobSubItem     JobSubItem?      @relation(fields: [jobSubItemId], references: [id])
+  approvedBy     User?            @relation("ApprovedTimesheets", fields: [approvedById], references: [id])
+  reimbursements Reimbursement[]
+  exportItems    PayrollExportItem[]
+
+  @@map("timesheets")
+}
+
+// ─── Reimbursements ───────────────────────────────────────────────────────────
+
+model Reimbursement {
+  id           String              @id @default(cuid())
+  contractorId String              @map("contractor_id")
+  eventId      String              @map("event_id")
+  timesheetId  String?             @map("timesheet_id")
+  amount       Decimal             @db.Decimal(10, 2)
+  category     String
+  receiptUrl   String?             @map("receipt_url")
+  notes        String?
+  status       ReimbursementStatus @default(SUBMITTED)
+  submittedAt  DateTime            @default(now()) @map("submitted_at")
+  approvedById String?             @map("approved_by_id")
+  approvedAt   DateTime?           @map("approved_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  contractor Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  timesheet  Timesheet? @relation(fields: [timesheetId], references: [id])
+  approvedBy User?      @relation("ApprovedReimbursements", fields: [approvedById], references: [id])
+
+  @@map("reimbursements")
+}
+
+// ─── Ratings (Internal Only) ──────────────────────────────────────────────────
+
+model ContractorRating {
+  id              String          @id @default(cuid())
+  contractorId    String          @map("contractor_id")
+  eventId         String          @map("event_id")
+  managerId       String          @map("manager_id")
+  reliability     Int?
+  communication   Int?
+  skillLevel      Int?            @map("skill_level")
+  professionalism Int?
+  gearHandling    Int?            @map("gear_handling")
+  overallRating   Int?            @map("overall_rating")
+  wouldBookAgain  WouldBookAgain? @map("would_book_again")
+  incidentFlag    Boolean         @default(false) @map("incident_flag")
+  privateNotes    String?         @map("private_notes")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  contractor Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  manager    User       @relation("ManagerRatings", fields: [managerId], references: [id])
+
+  @@map("contractor_ratings")
+}
+
+// ─── Payroll Exports ──────────────────────────────────────────────────────────
+
+model PayrollExport {
+  id                 String              @id @default(cuid())
+  payrollPeriodStart DateTime            @map("payroll_period_start")
+  payrollPeriodEnd   DateTime            @map("payroll_period_end")
+  payrollPayDate     DateTime?           @map("payroll_pay_date")
+  status             PayrollExportStatus @default(DRAFT)
+  exportedById       String?             @map("exported_by_id")
+  exportedAt         DateTime?           @map("exported_at")
+  csvUrl             String?             @map("csv_url")
+  createdAt          DateTime            @default(now()) @map("created_at")
+
+  exportedBy User?               @relation(fields: [exportedById], references: [id])
+  items      PayrollExportItem[]
+
+  @@map("payroll_exports")
+}
+
+model PayrollExportItem {
+  id                 String  @id @default(cuid())
+  payrollExportId    String  @map("payroll_export_id")
+  contractorId       String  @map("contractor_id")
+  eventId            String  @map("event_id")
+  timesheetId        String? @map("timesheet_id")
+  grossPay           Decimal @map("gross_pay") @db.Decimal(10, 2)
+  reimbursementTotal Decimal @map("reimbursement_total") @db.Decimal(10, 2)
+  bonusTotal         Decimal @map("bonus_total") @db.Decimal(10, 2)
+  exportPayloadJson  Json    @map("export_payload_json")
+
+  payrollExport PayrollExport @relation(fields: [payrollExportId], references: [id], onDelete: Cascade)
+  event         Event         @relation(fields: [eventId], references: [id])
+  timesheet     Timesheet?    @relation(fields: [timesheetId], references: [id])
+
+  @@map("payroll_export_items")
+}
+
+// ─── Bonuses ─────────────────────────────────────────────────────────────────
+
+model Bonus {
+  id           String      @id @default(cuid())
+  contractorId String      @map("contractor_id")
+  eventId      String?     @map("event_id")
+  amount       Decimal     @db.Decimal(10, 2)
+  reason       String
+  notes        String?
+  status       BonusStatus @default(PENDING)
+  createdById  String      @map("created_by_id")
+  approvedById String?     @map("approved_by_id")
+  approvedAt   DateTime?   @map("approved_at")
+  paidAt       DateTime?   @map("paid_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  contractor Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  event      Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdBy  User       @relation("CreatedBonuses", fields: [createdById], references: [id])
+  approvedBy User?      @relation("ApprovedBonuses", fields: [approvedById], references: [id])
+
+  @@map("bonuses")
+}
+
+// ─── Contractor Imports ───────────────────────────────────────────────────────
+
+model ContractorImport {
+  id             String       @id @default(cuid())
+  importedById   String       @map("imported_by_id")
+  fileName       String       @map("file_name")
+  totalRows      Int          @default(0) @map("total_rows")
+  successfulRows Int          @default(0) @map("successful_rows")
+  failedRows     Int          @default(0) @map("failed_rows")
+  skippedRows    Int          @default(0) @map("skipped_rows")
+  importStatus   ImportStatus @default(PENDING) @map("import_status")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  importedBy User                  @relation(fields: [importedById], references: [id])
+  rows       ContractorImportRow[]
+
+  @@map("contractor_imports")
+}
+
+model ContractorImportRow {
+  id           String          @id @default(cuid())
+  importId     String          @map("contractor_import_id")
+  rowNumber    Int             @map("row_number")
+  rawDataJson  Json            @map("raw_data_json")
+  status       ImportRowStatus @default(PENDING)
+  errorMessage String?         @map("error_message")
+  contractorId String?         @map("contractor_id")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  import     ContractorImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  contractor Contractor?      @relation(fields: [contractorId], references: [id])
+
+  @@map("contractor_import_rows")
+}
+
+// ─── Intake Submissions ───────────────────────────────────────────────────────
+
+model IntakeSubmission {
+  id            String       @id @default(cuid())
+  contractorId  String?      @map("contractor_id")
+  firstName     String       @map("first_name")
+  lastName      String       @map("last_name")
+  preferredName String?      @map("preferred_name")
+  email         String
+  phone         String?
+  submittedData Json         @map("submitted_data_json")
+  status        IntakeStatus @default(PENDING)
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@map("intake_submissions")
+}
+
+// ─── Training (Placeholder) ───────────────────────────────────────────────────
+
+model TrainingModule {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  content     String?
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  completions TrainingCompletion[]
+
+  @@map("training_modules")
+}
+
+model TrainingCompletion {
+  id           String   @id @default(cuid())
+  moduleId     String   @map("module_id")
+  contractorId String   @map("contractor_id")
+  completedAt  DateTime @default(now()) @map("completed_at")
+
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("training_completions")
+}
+
+// ─── App Settings ─────────────────────────────────────────────────────────────
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
