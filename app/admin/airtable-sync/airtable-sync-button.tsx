@@ -11,6 +11,7 @@ export function AirtableSyncButton({ disabled }: { disabled: boolean }) {
     synced?: number;
     assignmentsSynced?: number;
     assignmentsSkipped?: number;
+    assignmentsRemoved?: number;
     assignmentErrors?: string[];
     error?: string;
   } | null>(null);
@@ -34,6 +35,9 @@ export function AirtableSyncButton({ disabled }: { disabled: boolean }) {
         <p className="text-sm text-green-600 font-medium">
           ✓ Synced {result.synced} events
           {result.assignmentsSynced !== undefined && `, ${result.assignmentsSynced} crew`}
+          {result.assignmentsRemoved !== undefined && result.assignmentsRemoved > 0 && (
+            <>, removed {result.assignmentsRemoved} stale crew</>
+          )}
         </p>
       )}
       {result?.assignmentsSkipped !== undefined && result.assignmentsSkipped > 0 && (

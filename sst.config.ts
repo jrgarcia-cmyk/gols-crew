@@ -24,7 +24,6 @@ export default $config({
       ],
     });
 
-    // ── Next.js app: Lambda (SSR) + CloudFront (CDN) + S3 (static assets) ──
     const site = new sst.aws.Nextjs("GOLSCrew", {
       domain: {
         name: "crew.gols.co",
@@ -43,12 +42,25 @@ export default $config({
         DATABASE_URL: process.env.DATABASE_URL!,
         AIRTABLE_API_KEY: process.env.AIRTABLE_API_KEY ?? "",
         AIRTABLE_BASE_ID: process.env.AIRTABLE_BASE_ID ?? "",
+        CRON_SECRET: process.env.CRON_SECRET ?? "",
         NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "",
         // AWS_REGION is automatically injected by SST; add others as needed
       },
 
       // Custom CloudFront cache behaviors can be added here.
       // SST handles static asset caching automatically.
+    });
+
+    new sst.aws.CronV2("AirtableStaffingSync", {
+      schedule: "rate(5 minutes)",
+      function: {
+        handler: "functions/trigger-airtable-staffing-sync.handler",
+        timeout: "120 seconds",
+        environment: {
+          APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? site.url,
+          CRON_SECRET: process.env.CRON_SECRET ?? "",
+        },
+      },
     });
 
     return {

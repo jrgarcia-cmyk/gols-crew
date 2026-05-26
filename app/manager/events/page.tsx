@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureStaffingSynced } from "@/lib/ensure-staffing-sync";
 import { formatDate } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import Link from "next/link";
 
 export default async function ManagerEventsPage() {
   await requireRole("MANAGER", "ADMIN", "SUPER_ADMIN");
+  await ensureStaffingSynced();
 
   const events = await db.event.findMany({
     where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] } },

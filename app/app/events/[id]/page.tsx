@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureStaffingSynced } from "@/lib/ensure-staffing-sync";
 import { notFound } from "next/navigation";
 import { formatDate, formatDateTime, formatTime } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ export default async function ContractorEventDetailPage({
 }) {
   const { id } = await params;
   const user = await requireRole("CONTRACTOR");
+  await ensureStaffingSynced();
 
   const assignment = user.contractor
     ? await db.eventAssignment.findFirst({
