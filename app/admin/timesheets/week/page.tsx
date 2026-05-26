@@ -11,7 +11,17 @@ import {
   uniqueMissingRateIssues,
   type TimesheetRateCheckEntry,
 } from "@/lib/timesheet-rate-validation";
-import { getTimesheetPayType, formatTimesheetQuantity } from "@/lib/timesheet-pay";
+import {
+  getTimesheetPayType,
+  formatTimesheetQuantity,
+  formatTimesheetRate,
+  getTimesheetEntryTotal,
+  formatWeekSummary,
+  sumWeekHours,
+  sumWeekPay,
+  type TimesheetPayContext,
+} from "@/lib/timesheet-pay";
+import { contractorRateSelect } from "@/lib/timesheet-calc";
 import { isPerGamePayType } from "@/lib/pay-type";
 import Link from "next/link";
 import { WeekActions } from "./week-actions";
@@ -77,16 +87,11 @@ export default async function AdminTimesheetWeekPage({
     }),
     db.contractorRate.findMany({
       where: { contractorId, active: true },
-      select: {
-        id: true,
-        label: true,
-        role: true,
-        payType: true,
-        rateAmount: true,
-        isDefault: true,
-      },
+      select: contractorRateSelect,
     }),
   ]);
+
+  const payCtx: TimesheetPayContext = { contractorRates };
 
   const entryIssues = new Map(
     entries.map((entry) => [
@@ -105,8 +110,9 @@ export default async function AdminTimesheetWeekPage({
   const contractorName =
     contractor.preferredName ?? `${contractor.firstName} ${contractor.lastName}`;
 
-  const totalHours = entries.reduce((sum, e) => sum + Number(e.totalHours ?? 0), 0);
-  const totalPay = entries.reduce((sum, e) => sum + Number(e.calculatedPay ?? 0), 0);
+  const totalHours = sumWeekHours(entries, payCtx);
+  const totalPay = sumWeekPay(entries, payCtx);
+  const weekSummary = formatWeekSummary(entries, payCtx);
 
   const hasSubmitted = entries.some((e) => e.status === "SUBMITTED");
   const allApproved = entries.length > 0 && entries.every((e) => e.status === "APPROVED");
@@ -144,9 +150,9 @@ export default async function AdminTimesheetWeekPage({
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 mt-1">
-          <span className="text-xl font-bold text-gray-900">{totalHours.toFixed(2)} hrs</span>
+          <span className="text-sm font-semibold text-gray-600">{weekSummary}</span>
           {totalPay > 0 && (
-            <span className="text-sm font-semibold text-gray-500">{formatCurrency(totalPay)}</span>
+            <span className="text-xl font-bold text-gray-900">{formatCurrency(totalPay)}</span>
           )}
           {/* Overall status badges */}
           <div className="flex gap-1 flex-wrap justify-end">
@@ -218,7 +224,9 @@ export default async function AdminTimesheetWeekPage({
               const missingRate = entryIssues.get(entry.id);
               const payType = getTimesheetPayType(entry);
               const perGame = isPerGamePayType(payType);
-              const quantity = formatTimesheetQuantity(entry);
+              const quantity = formatTimesheetQuantity(entry, payCtx);
+              const rate = formatTimesheetRate(entry, payCtx);
+              const entryTotal = getTimesheetEntryTotal(entry, payCtx);
 
               return (
               <div key={entry.id} className="px-6 py-4 space-y-1">
@@ -272,14 +280,26 @@ export default async function AdminTimesheetWeekPage({
                     {entry.notes && (
                       <p className="text-xs text-gray-400 italic mt-0.5">{entry.notes}</p>
                     )}
+                    {(rate || quantity) && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {rate && <span>{rate}</span>}
+                        {rate && quantity && <span> · </span>}
+                        {quantity && <span>{quantity}</span>}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
-                    <span className="text-sm font-bold text-gray-900">
-                      {quantity ?? (entry.totalHours ? `${Number(entry.totalHours).toFixed(2)} hrs` : "—")}
-                    </span>
-                    {entry.calculatedPay && (
-                      <span className="text-xs text-gray-500">{formatCurrency(Number(entry.calculatedPay))}</span>
+                    {entryTotal != null && (
+                      <span className="text-sm font-bold text-gray-900">
+                        {formatCurrency(entryTotal)}
+                      </span>
+                    )}
+                    {quantity && entryTotal == null && (
+                      <span className="text-sm font-bold text-gray-900">{quantity}</span>
+                    )}
+                    {entryTotal == null && !quantity && (
+                      <span className="text-sm font-bold text-gray-900">—</span>
                     )}
                     <Badge variant={statusBadge(entry.status)}>{entry.status}</Badge>
                   </div>

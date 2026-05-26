@@ -1,10 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import {
+  ShiftPayPreview,
+  computeClientHours,
+  computeClientShiftTotal,
+} from "@/components/timesheets/shift-pay-preview";
+import { formatCurrency } from "@/lib/utils";
 import type { PayType } from "@/app/generated/prisma";
 
 interface TimesheetFormProps {
@@ -16,6 +22,7 @@ interface TimesheetFormProps {
   rateAmount?: number | null;
   startDatetime?: string;
   endDatetime?: string;
+  weekExistingPay?: number;
 }
 
 type Step = "form" | "reimbursement-prompt" | "done";
@@ -28,6 +35,7 @@ export function TimesheetForm({
   rateAmount,
   startDatetime,
   endDatetime,
+  weekExistingPay = 0,
 }: TimesheetFormProps) {
   const router = useRouter();
   const perGame = payType === "PER_GAME";
@@ -35,6 +43,8 @@ export function TimesheetForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [timesheetId, setTimesheetId] = useState<string | null>(null);
+  const [savedShiftTotal, setSavedShiftTotal] = useState<number | null>(null);
+  const [savedWeekTotal, setSavedWeekTotal] = useState<number | null>(null);
 
   const defaultStart = startDatetime
     ? new Date(startDatetime).toISOString().slice(0, 16)
@@ -49,11 +59,33 @@ export function TimesheetForm({
   const [gamesCount, setGamesCount] = useState("1");
   const [notes, setNotes] = useState("");
 
+  const hours = useMemo(
+    () =>
+      perGame
+        ? null
+        : computeClientHours(startTime, endTime, parseInt(breakMinutes) || 0),
+    [perGame, startTime, endTime, breakMinutes]
+  );
+  const games = perGame ? parseInt(gamesCount, 10) || null : null;
+  const shiftTotal = useMemo(
+    () => computeClientShiftTotal(payType, rateAmount ?? null, hours, games),
+    [payType, rateAmount, hours, games]
+  );
+  const payPeriodTotal =
+    shiftTotal != null ? weekExistingPay + shiftTotal : null;
+  const quantityLabel = perGame
+    ? games && games > 0
+      ? `${games} ${games === 1 ? "game" : "games"}`
+      : null
+    : hours != null
+    ? `${hours.toFixed(2)} hrs`
+    : null;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (perGame) {
-      const games = parseInt(gamesCount, 10);
-      if (!games || games < 1) {
+      const gamesVal = parseInt(gamesCount, 10);
+      if (!gamesVal || gamesVal < 1) {
         setError("Please enter how many games you worked.");
         return;
       }
@@ -87,6 +119,12 @@ export function TimesheetForm({
       return;
     }
 
+    const savedPay =
+      data.calculatedPay != null ? Number(data.calculatedPay) : shiftTotal;
+    setSavedShiftTotal(savedPay);
+    setSavedWeekTotal(
+      savedPay != null ? weekExistingPay + savedPay : payPeriodTotal
+    );
     setTimesheetId(data.id);
     setStep("reimbursement-prompt");
     setLoading(false);
@@ -105,7 +143,17 @@ export function TimesheetForm({
             <h2 className="text-lg font-bold text-gray-900">
               {perGame ? "Games Submitted!" : "Timesheet Submitted!"}
             </h2>
-            <p className="text-gray-500 text-sm mt-1">
+            {savedShiftTotal != null && (
+              <p className="text-2xl font-bold text-gray-900 mt-2">
+                {formatCurrency(savedShiftTotal)}
+              </p>
+            )}
+            {savedWeekTotal != null && (
+              <p className="text-sm text-gray-500 mt-1">
+                Pay period total: {formatCurrency(savedWeekTotal)}
+              </p>
+            )}
+            <p className="text-gray-500 text-sm mt-3">
               Do you have any reimbursements to submit for this event?
             </p>
           </div>
@@ -126,9 +174,9 @@ export function TimesheetForm({
           fullWidth
           size="lg"
           variant="outline"
-          onClick={() => router.push("/app/events")}
+          onClick={() => router.push("/app/timesheets")}
         >
-          No, I&apos;m Done
+          No, View Time Clock
         </Button>
       </div>
     );
@@ -137,22 +185,15 @@ export function TimesheetForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {perGame ? (
-        <>
-          {rateAmount != null && (
-            <Card className="p-4 text-sm text-gray-600">
-              Rate: ${rateAmount.toFixed(2)} per game
-            </Card>
-          )}
-          <Input
-            label="Number of Games"
-            type="number"
-            value={gamesCount}
-            onChange={(e) => setGamesCount(e.target.value)}
-            min="1"
-            step="1"
-            required
-          />
-        </>
+        <Input
+          label="Number of Games"
+          type="number"
+          value={gamesCount}
+          onChange={(e) => setGamesCount(e.target.value)}
+          min="1"
+          step="1"
+          required
+        />
       ) : (
         <>
           <Input
@@ -180,6 +221,16 @@ export function TimesheetForm({
           />
         </>
       )}
+
+      <ShiftPayPreview
+        payType={payType}
+        rateAmount={rateAmount ?? null}
+        shiftTotal={shiftTotal}
+        payPeriodTotal={payPeriodTotal}
+        quantityLabel={quantityLabel}
+        missingRate={rateAmount == null}
+      />
+
       <div className="flex flex-col gap-1">
         <label className="text-sm font-medium text-gray-700">Notes (optional)</label>
         <textarea

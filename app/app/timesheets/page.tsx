@@ -7,6 +7,7 @@ import {
   formatWeekSummary,
   getTimesheetEntryTotal,
   getTimesheetPayType,
+  sumWeekPay,
   type TimesheetPayContext,
 } from "@/lib/timesheet-pay";
 import { contractorRateSelect } from "@/lib/timesheet-calc";
@@ -119,6 +120,7 @@ export default async function ContractorTimesheetsPage() {
             const weekEndStr = shiftDate(weekStart, 6);
             const draftEntries = group.filter((e) => e.status === "DRAFT");
             const allSubmitted = draftEntries.length === 0;
+            const weekPayTotal = sumWeekPay(group, payCtx);
             const weekStatusLabel = allSubmitted
               ? group.every((e) => e.status === "APPROVED")
                 ? "APPROVED"
@@ -132,7 +134,7 @@ export default async function ContractorTimesheetsPage() {
             return (
               <div key={weekStart}>
                 <div className="flex items-center justify-between mb-2 gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate">
                       {formatDateShort(weekStart)} – {formatDateShort(weekEndStr)}
                     </p>
@@ -140,6 +142,13 @@ export default async function ContractorTimesheetsPage() {
                       {formatWeekSummary(group, payCtx)}
                     </span>
                   </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {weekPayTotal > 0 && (
+                      <span className="text-sm font-bold text-red-600">
+                        {formatCurrency(weekPayTotal)}
+                      </span>
+                    )}
 
                   {contractor && draftEntries.length > 0 && (
                     <SubmitWeekButton
@@ -153,6 +162,7 @@ export default async function ContractorTimesheetsPage() {
                       {weekStatusLabel}
                     </Badge>
                   )}
+                  </div>
                 </div>
 
                 {draftEntries.length > 0 && (

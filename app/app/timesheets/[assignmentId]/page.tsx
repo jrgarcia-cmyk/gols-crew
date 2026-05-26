@@ -1,6 +1,10 @@
 import { requireRole } from "@/lib/auth";
 import { resolveContractorForUser } from "@/lib/contractor";
 import { db } from "@/lib/db";
+import {
+  fetchWeekEntriesForPay,
+  resolveRateForEntry,
+} from "@/lib/timesheet-calc-server";
 import { notFound } from "next/navigation";
 import { TimesheetForm } from "./timesheet-form";
 
@@ -22,6 +26,21 @@ export default async function TimesheetSubmitPage({
   if (!assignment) notFound();
 
   const payType = assignment.payTypeSnapshot ?? assignment.event.payType;
+  const weekSummary = await fetchWeekEntriesForPay(
+    contractor.id,
+    assignment.event.startDatetime
+  );
+
+  const rateAmount = resolveRateForEntry(
+    {
+      assignment,
+      event: assignment.event,
+      gamesCount: null,
+      totalHours: null,
+      calculatedPay: null,
+    },
+    weekSummary.contractorRates
+  );
 
   return (
     <div className="px-4 py-6 space-y-5">
@@ -37,13 +56,10 @@ export default async function TimesheetSubmitPage({
         contractorId={contractor.id}
         eventName={assignment.event.name}
         payType={payType}
-        rateAmount={
-          assignment.rateAmountSnapshot
-            ? Number(assignment.rateAmountSnapshot)
-            : null
-        }
+        rateAmount={rateAmount}
         startDatetime={assignment.event.startDatetime.toISOString()}
         endDatetime={assignment.event.endDatetime?.toISOString()}
+        weekExistingPay={weekSummary.existingPay}
       />
     </div>
   );

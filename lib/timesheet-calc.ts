@@ -3,6 +3,7 @@ import { isPerGamePayType } from "@/lib/pay-type";
 import { pickContractorRate } from "@/lib/rates";
 
 export type ContractorRateLookup = {
+  contractorId?: string;
   id: string;
   label: string;
   role: string | null;
@@ -111,6 +112,7 @@ export function resolveTimesheetEntryTotal(
 }
 
 export const contractorRateSelect = {
+  contractorId: true,
   id: true,
   label: true,
   role: true,
@@ -118,3 +120,17 @@ export const contractorRateSelect = {
   rateAmount: true,
   isDefault: true,
 } as const;
+
+export function groupRatesByContractor(
+  rates: ContractorRateLookup[]
+): Map<string, ContractorRateLookup[]> {
+  const map = new Map<string, ContractorRateLookup[]>();
+  for (const rate of rates) {
+    const contractorId = rate.contractorId;
+    if (!contractorId) continue;
+    const list = map.get(contractorId) ?? [];
+    list.push(rate);
+    map.set(contractorId, list);
+  }
+  return map;
+}

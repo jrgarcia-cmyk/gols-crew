@@ -2,6 +2,12 @@ import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getWeekStart, shiftDate } from "@/lib/week";
 import { getWeekStartDay } from "@/lib/week-server";
+import { fetchRatesForContractors } from "@/lib/timesheet-calc-server";
+import { computeTimesheetHours, type ContractorRateLookup } from "@/lib/timesheet-calc";
+import {
+  getTimesheetEntryTotal,
+  type TimesheetPayContext,
+} from "@/lib/timesheet-pay";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WeekPicker } from "./week-picker";
@@ -42,12 +48,24 @@ async function fetchTimesheets(statusFilter: string, weekStart: string | null) {
       contractor: {
         select: { id: true, firstName: true, lastName: true, preferredName: true, email: true },
       },
+      assignment: {
+        select: {
+          payTypeSnapshot: true,
+          rateAmountSnapshot: true,
+          role: true,
+        },
+      },
+      event: { select: { payType: true } },
     },
     orderBy: [{ entryDate: "desc" }, { submittedAt: "desc" }],
   });
 }
 
-function buildWeekRows(timesheets: Timesheet[], weekStartDay: number): WeekRow[] {
+function buildWeekRows(
+  timesheets: Timesheet[],
+  weekStartDay: number,
+  ratesByContractor: Map<string, ContractorRateLookup[]>
+): WeekRow[] {
   const map = new Map<string, WeekRow>();
 
   for (const ts of timesheets) {
@@ -80,8 +98,11 @@ function buildWeekRows(timesheets: Timesheet[], weekStartDay: number): WeekRow[]
     row.entryCount += 1;
     if (ts.status === "DRAFT") row.draftCount += 1;
     if (ts.status === "SUBMITTED") row.submittedCount += 1;
-    row.totalHours += Number(ts.totalHours ?? 0);
-    row.totalPay += Number(ts.calculatedPay ?? 0);
+    row.totalHours += computeTimesheetHours(ts) ?? 0;
+    const payCtx: TimesheetPayContext = {
+      contractorRates: ratesByContractor.get(ts.contractorId) ?? [],
+    };
+    row.totalPay += getTimesheetEntryTotal(ts, payCtx) ?? 0;
   }
 
   // Derive week status from entry statuses
@@ -122,7 +143,9 @@ export default async function AdminTimesheetsPage({
     getWeekStartDay(),
   ]);
 
-  const rows = buildWeekRows(timesheets, weekStartDay);
+  const contractorIds = [...new Set(timesheets.map((ts) => ts.contractorId))];
+  const ratesByContractor = await fetchRatesForContractors(contractorIds);
+  const rows = buildWeekRows(timesheets, weekStartDay, ratesByContractor);
 
   // Week navigation
   const thisWeek = getWeekStart(new Date(), weekStartDay);

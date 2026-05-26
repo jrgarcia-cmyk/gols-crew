@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { DayPicker } from "./day-picker";
+import {
+  ShiftPayPreview,
+  computeClientShiftTotal,
+} from "@/components/timesheets/shift-pay-preview";
+import type { PayType } from "@/app/generated/prisma";
 
 type SubItem = { id: string; name: string };
 type Category = { id: string; name: string; color: string | null; subItems: SubItem[] };
@@ -15,16 +19,18 @@ type EventOption = {
   startDatetime: Date;
   role: string | null;
   assignmentId: string | null;
+  payType: PayType;
+  rateAmount: number | null;
 };
 
 export interface InitialValues {
-  entryDate: string;   // YYYY-MM-DD
-  startTime: string;   // HH:MM
-  endTime: string;     // HH:MM
+  entryDate: string;
+  startTime: string;
+  endTime: string;
   breakMinutes: number;
   jobCategoryId: string;
   jobSubItemId: string;
-  eventId: string;     // "" = no event
+  eventId: string;
   notes: string;
 }
 
@@ -32,7 +38,8 @@ interface Props {
   contractorId: string;
   categories: Category[];
   events: EventOption[];
-  /** Present when editing an existing entry */
+  defaultHourlyRate?: number | null;
+  initialWeekExistingPay?: number;
   timesheetId?: string;
   initialValues?: InitialValues;
 }
@@ -41,12 +48,21 @@ function formatEventDate(dt: Date) {
   return new Date(dt).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
-export function TimeEntryForm({ contractorId, categories, events, timesheetId, initialValues }: Props) {
+export function TimeEntryForm({
+  contractorId,
+  categories,
+  events,
+  defaultHourlyRate = null,
+  initialWeekExistingPay = 0,
+  timesheetId,
+  initialValues,
+}: Props) {
   const router = useRouter();
   const isEditing = !!timesheetId;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [weekExistingPay, setWeekExistingPay] = useState(initialWeekExistingPay);
 
   const today = new Date().toISOString().slice(0, 10);
   const [entryDate, setEntryDate] = useState(initialValues?.entryDate ?? today);
@@ -60,16 +76,40 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
 
   const selectedCategory = categories.find((c) => c.id === jobCategoryId);
   const selectedEvent = events.find((event) => event.id === eventId);
+  const rateAmount = selectedEvent?.rateAmount ?? defaultHourlyRate;
 
-  // Computed hours preview
-  let hoursPreview = "";
-  if (startTime && endTime) {
+  useEffect(() => {
+    if (isEditing) return;
+    let cancelled = false;
+    fetch(`/api/timesheets/week-summary?entryDate=${entryDate}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.existingPay != null) {
+          setWeekExistingPay(data.existingPay);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [entryDate, isEditing]);
+
+  const hours = useMemo(() => {
+    if (!startTime || !endTime) return null;
     const start = new Date(`${entryDate}T${startTime}`);
     const end = new Date(`${entryDate}T${endTime}`);
     const diffMs = end.getTime() - start.getTime();
-    const totalHours = Math.max(0, diffMs / (1000 * 60 * 60) - (parseInt(breakMinutes) || 0) / 60);
-    if (totalHours > 0) hoursPreview = `${totalHours.toFixed(2)} hrs`;
-  }
+    const total = Math.max(0, diffMs / (1000 * 60 * 60) - (parseInt(breakMinutes) || 0) / 60);
+    return total > 0 ? total : null;
+  }, [entryDate, startTime, endTime, breakMinutes]);
+
+  const shiftTotal = useMemo(
+    () => computeClientShiftTotal("HOURLY", rateAmount, hours, null),
+    [rateAmount, hours]
+  );
+  const payPeriodTotal =
+    shiftTotal != null ? weekExistingPay + shiftTotal : null;
+  const quantityLabel = hours != null ? `${hours.toFixed(2)} hrs` : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -226,14 +266,14 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
         step="5"
       />
 
-      {hoursPreview && (
-        <Card>
-          <CardContent className="py-3 text-center">
-            <p className="text-2xl font-bold text-gray-900">{hoursPreview}</p>
-            <p className="text-xs text-gray-400">total hours (after break)</p>
-          </CardContent>
-        </Card>
-      )}
+      <ShiftPayPreview
+        payType="HOURLY"
+        rateAmount={rateAmount}
+        shiftTotal={shiftTotal}
+        payPeriodTotal={payPeriodTotal}
+        quantityLabel={quantityLabel}
+        missingRate={rateAmount == null}
+      />
 
       {/* Notes */}
       <div className="space-y-1">

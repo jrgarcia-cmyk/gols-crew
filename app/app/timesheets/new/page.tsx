@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sortEventsMostCurrentFirst } from "@/lib/events";
+import { fetchWeekEntriesForPay, resolveRateForEntry } from "@/lib/timesheet-calc-server";
 import { TimeEntryForm } from "./time-entry-form";
 
 export default async function NewTimesheetPage() {
@@ -11,7 +12,7 @@ export default async function NewTimesheetPage() {
     user.contractor ??
     (await db.contractor.findUnique({ where: { email: user.email } }));
 
-  const [categories, events] = await Promise.all([
+  const [categories, events, weekSummary] = await Promise.all([
     db.jobCategory.findMany({
       where: { active: true },
       orderBy: [{ order: "asc" }, { name: "asc" }],
@@ -30,15 +31,38 @@ export default async function NewTimesheetPage() {
             id: true,
             name: true,
             startDatetime: true,
+            payType: true,
             assignments: {
               where: { contractorId: contractor.id },
               take: 1,
-              select: { id: true, role: true },
+              select: {
+                id: true,
+                role: true,
+                payTypeSnapshot: true,
+                rateAmountSnapshot: true,
+              },
             },
           },
         })
       : [],
+    contractor
+      ? fetchWeekEntriesForPay(contractor.id, new Date())
+      : Promise.resolve(null),
   ]);
+
+  const contractorRates = weekSummary?.contractorRates ?? [];
+  const defaultHourlyRate = contractor
+    ? resolveRateForEntry(
+        {
+          assignment: null,
+          event: { payType: "HOURLY" },
+          gamesCount: null,
+          totalHours: null,
+          calculatedPay: null,
+        },
+        contractorRates
+      )
+    : null;
 
   return (
     <div className="px-4 py-6 space-y-5">
@@ -62,13 +86,31 @@ export default async function NewTimesheetPage() {
         <TimeEntryForm
           contractorId={contractor.id}
           categories={categories}
-          events={sortEventsMostCurrentFirst(events).map((event) => ({
-            id: event.id,
-            name: event.name,
-            startDatetime: event.startDatetime,
-            role: event.assignments[0]?.role ?? null,
-            assignmentId: event.assignments[0]?.id ?? null,
-          }))}
+          defaultHourlyRate={defaultHourlyRate}
+          initialWeekExistingPay={weekSummary?.existingPay ?? 0}
+          events={sortEventsMostCurrentFirst(events).map((event) => {
+            const assignment = event.assignments[0] ?? null;
+            const payType = assignment?.payTypeSnapshot ?? event.payType;
+            const rateAmount = resolveRateForEntry(
+              {
+                assignment,
+                event: { payType: event.payType },
+                gamesCount: null,
+                totalHours: null,
+                calculatedPay: null,
+              },
+              contractorRates
+            );
+            return {
+              id: event.id,
+              name: event.name,
+              startDatetime: event.startDatetime,
+              role: assignment?.role ?? null,
+              assignmentId: assignment?.id ?? null,
+              payType,
+              rateAmount,
+            };
+          })}
         />
       )}
     </div>

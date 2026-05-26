@@ -3,6 +3,10 @@ import { db } from "@/lib/db";
 import { sortEventsMostCurrentFirst } from "@/lib/events";
 import { isContractorEditableStatus, toDatetimeLocalValue } from "@/lib/timesheet-edit";
 import { isPerGamePayType } from "@/lib/pay-type";
+import {
+  fetchActiveContractorRates,
+  resolveRateForEntry,
+} from "@/lib/timesheet-calc-server";
 import { notFound, redirect } from "next/navigation";
 import { TimeEntryForm, type InitialValues } from "@/app/app/timesheets/new/time-entry-form";
 import { AssignmentEntryEditForm } from "../assignment-entry-edit-form";
@@ -80,9 +84,18 @@ export default async function EditTimesheetPage({
     (entry.gamesCount ?? 0) > 0 || isPerGamePayType(payType);
   const eventName =
     entry.assignment?.event.name ?? entry.event?.name ?? "Event shift";
-  const rateAmount = entry.assignment?.rateAmountSnapshot
-    ? Number(entry.assignment.rateAmountSnapshot)
-    : null;
+
+  const contractorRates = await fetchActiveContractorRates(contractor.id);
+  const rateAmount = resolveRateForEntry(
+    {
+      assignment: entry.assignment,
+      event: entry.event ?? entry.assignment?.event ?? null,
+      gamesCount: entry.gamesCount,
+      totalHours: null,
+      calculatedPay: null,
+    },
+    contractorRates
+  );
 
   if (entry.assignmentId && entry.assignment) {
     return (
@@ -145,14 +158,31 @@ export default async function EditTimesheetPage({
             id: true,
             name: true,
             startDatetime: true,
+            payType: true,
             assignments: {
               where: { contractorId: contractor.id },
               take: 1,
-              select: { id: true, role: true },
+              select: {
+                id: true,
+                role: true,
+                payTypeSnapshot: true,
+                rateAmountSnapshot: true,
+              },
             },
           },
         }),
       ]);
+
+  const defaultHourlyRate = resolveRateForEntry(
+    {
+      assignment: null,
+      event: { payType: "HOURLY" },
+      gamesCount: null,
+      totalHours: null,
+      calculatedPay: null,
+    },
+    contractorRates
+  );
 
   const initialValues: InitialValues = {
     entryDate: extractDate(entry.entryDate),
@@ -201,13 +231,28 @@ export default async function EditTimesheetPage({
         <TimeEntryForm
           contractorId={contractor.id}
           categories={categories!}
-          events={sortEventsMostCurrentFirst(events!).map((event) => ({
-            id: event.id,
-            name: event.name,
-            startDatetime: event.startDatetime,
-            role: event.assignments[0]?.role ?? null,
-            assignmentId: event.assignments[0]?.id ?? null,
-          }))}
+          defaultHourlyRate={defaultHourlyRate}
+          events={sortEventsMostCurrentFirst(events!).map((event) => {
+            const assignment = event.assignments[0] ?? null;
+            return {
+              id: event.id,
+              name: event.name,
+              startDatetime: event.startDatetime,
+              role: assignment?.role ?? null,
+              assignmentId: assignment?.id ?? null,
+              payType: assignment?.payTypeSnapshot ?? event.payType,
+              rateAmount: resolveRateForEntry(
+                {
+                  assignment,
+                  event: { payType: event.payType },
+                  gamesCount: null,
+                  totalHours: null,
+                  calculatedPay: null,
+                },
+                contractorRates
+              ),
+            };
+          })}
           timesheetId={entry.id}
           initialValues={initialValues}
         />

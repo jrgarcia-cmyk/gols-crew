@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { MissingRateAlert } from "@/components/admin/missing-rate-alert";
 import { getTimesheetMissingRateIssue } from "@/lib/timesheet-approval";
+import { fetchActiveContractorRates } from "@/lib/timesheet-calc-server";
 import { getTimesheetPayType, formatTimesheetQuantity, formatTimesheetRate, getTimesheetEntryTotal } from "@/lib/timesheet-pay";
 import { isPerGamePayType, PAY_TYPE_LABELS } from "@/lib/pay-type";
 import Link from "next/link";
@@ -40,12 +41,15 @@ export default async function AdminTimesheetDetailPage({
 
   if (!ts) notFound();
 
+  const contractorRates = await fetchActiveContractorRates(ts.contractorId);
+  const payCtx = { contractorRates };
+
   const missingRateIssue = await getTimesheetMissingRateIssue(id);
   const payType = getTimesheetPayType(ts);
   const perGame = isPerGamePayType(payType);
-  const quantity = formatTimesheetQuantity(ts);
-  const rate = formatTimesheetRate(ts);
-  const entryTotal = getTimesheetEntryTotal(ts);
+  const quantity = formatTimesheetQuantity(ts, payCtx);
+  const rate = formatTimesheetRate(ts, payCtx);
+  const entryTotal = getTimesheetEntryTotal(ts, payCtx);
 
   const contractorName =
     ts.contractor.preferredName ??
