@@ -75,12 +75,15 @@ export async function POST() {
     const now = new Date();
     let synced = 0;
     let assignmentsSynced = 0;
+    let assignmentsSkipped = 0;
+    const assignmentErrors: string[] = [];
 
     for (const ae of airtableEvents) {
       const statusMap: Record<string, string> = {
         confirmed: "CONFIRMED",
         draft: "DRAFT",
         cancelled: "CANCELLED",
+        complete: "COMPLETED",
         completed: "COMPLETED",
         "in progress": "IN_PROGRESS",
       };
@@ -119,25 +122,31 @@ export async function POST() {
       synced++;
     }
 
-    // Stream Details owns staffing. Resolve its Staffing links through All GOLS Contractors.
-    try {
-      const [assignments, airtableContractors] = await Promise.all([
-        fetchAirtableAssignments(),
-        fetchAirtableContractors(),
-      ]);
-      const airtableContractorsById = new Map(
-        airtableContractors.map((contractor) => [contractor.airtableId, contractor])
-      );
+    const [assignments, airtableContractors] = await Promise.all([
+      fetchAirtableAssignments(),
+      fetchAirtableContractors(),
+    ]);
+    const airtableContractorsById = new Map(
+      airtableContractors.map((contractor) => [contractor.airtableId, contractor])
+    );
 
-      for (const aa of assignments) {
+    // Stream Details owns staffing. Resolve its Staffing links through All GOLS Contractors.
+    for (const aa of assignments) {
+      try {
         const event = await db.event.findUnique({
           where: { airtableEventId: aa.eventAirtableId },
         });
-        if (!event) continue;
+        if (!event) {
+          assignmentsSkipped++;
+          continue;
+        }
 
         const contractor = await findContractor(aa, airtableContractorsById);
 
-        if (!contractor) continue;
+        if (!contractor) {
+          assignmentsSkipped++;
+          continue;
+        }
 
         await db.eventAssignment.upsert({
           where: { airtableAssignmentId: aa.airtableId },
@@ -160,12 +169,15 @@ export async function POST() {
           },
         });
         assignmentsSynced++;
+      } catch (err) {
+        assignmentsSkipped++;
+        if (assignmentErrors.length < 5) {
+          assignmentErrors.push(err instanceof Error ? err.message : "Unknown assignment sync error");
+        }
       }
-    } catch {
-      // Assignments table may not exist or have different name — continue
     }
 
-    return NextResponse.json({ synced, assignmentsSynced });
+    return NextResponse.json({ synced, assignmentsSynced, assignmentsSkipped, assignmentErrors });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Sync failed";
     return NextResponse.json({ error: msg }, { status: 500 });

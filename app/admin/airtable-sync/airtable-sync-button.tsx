@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 export function AirtableSyncButton({ disabled }: { disabled: boolean }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ synced?: number; error?: string } | null>(null);
+  const [result, setResult] = useState<{
+    synced?: number;
+    assignmentsSynced?: number;
+    assignmentsSkipped?: number;
+    assignmentErrors?: string[];
+    error?: string;
+  } | null>(null);
 
   async function runSync() {
     setLoading(true);
@@ -26,9 +32,18 @@ export function AirtableSyncButton({ disabled }: { disabled: boolean }) {
       </Button>
       {result?.synced !== undefined && (
         <p className="text-sm text-green-600 font-medium">
-          ✓ Synced {result.synced} records
+          ✓ Synced {result.synced} events
+          {result.assignmentsSynced !== undefined && `, ${result.assignmentsSynced} crew`}
         </p>
       )}
+      {result?.assignmentsSkipped !== undefined && result.assignmentsSkipped > 0 && (
+        <p className="text-sm text-amber-600">
+          {result.assignmentsSkipped} staffing rows skipped
+        </p>
+      )}
+      {result?.assignmentErrors?.length ? (
+        <p className="text-sm text-red-600">{result.assignmentErrors[0]}</p>
+      ) : null}
       {result?.error && (
         <p className="text-sm text-red-600">{result.error}</p>
       )}
