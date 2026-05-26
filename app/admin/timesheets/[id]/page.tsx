@@ -5,6 +5,10 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
+import { MissingRateAlert } from "@/components/admin/missing-rate-alert";
+import { getTimesheetMissingRateIssue } from "@/lib/timesheet-approval";
+import { getTimesheetPayType, formatTimesheetQuantity, formatTimesheetRate, getTimesheetEntryTotal } from "@/lib/timesheet-pay";
+import { isPerGamePayType, PAY_TYPE_LABELS } from "@/lib/pay-type";
 import Link from "next/link";
 import { TimesheetActions } from "../timesheet-actions";
 
@@ -35,6 +39,13 @@ export default async function AdminTimesheetDetailPage({
   });
 
   if (!ts) notFound();
+
+  const missingRateIssue = await getTimesheetMissingRateIssue(id);
+  const payType = getTimesheetPayType(ts);
+  const perGame = isPerGamePayType(payType);
+  const quantity = formatTimesheetQuantity(ts);
+  const rate = formatTimesheetRate(ts);
+  const entryTotal = getTimesheetEntryTotal(ts);
 
   const contractorName =
     ts.contractor.preferredName ??
@@ -75,6 +86,10 @@ export default async function AdminTimesheetDetailPage({
         <Badge variant={statusBadge(ts.status)} className="mt-1">{ts.status}</Badge>
       </div>
 
+      {missingRateIssue && ts.status === "SUBMITTED" && (
+        <MissingRateAlert issues={[missingRateIssue]} />
+      )}
+
       {/* Detail card */}
       <Card>
         <CardHeader><CardTitle>Timesheet Details</CardTitle></CardHeader>
@@ -83,22 +98,33 @@ export default async function AdminTimesheetDetailPage({
           <Row label="Job" value={jobLabel} />
           {ts.event && <Row label="Event" value={ts.event.name} />}
           {ts.assignment?.role && <Row label="Role" value={ts.assignment.role} />}
+          <Row label="Pay Type" value={PAY_TYPE_LABELS[payType]} />
 
           <div className="border-t border-gray-100 pt-3 mt-3 space-y-3">
-            <Row label="Clock In" value={formatTime(ts.startTime)} />
-            <Row label="Clock Out" value={formatTime(ts.endTime)} />
-            {ts.breakMinutes > 0 && (
-              <Row label="Break" value={`${ts.breakMinutes} min`} />
+            {perGame ? (
+              <>
+                {rate && <Row label="Rate" value={rate} />}
+                <Row label="Games" value={quantity ?? "—"} bold />
+              </>
+            ) : (
+              <>
+                <Row label="Clock In" value={formatTime(ts.startTime)} />
+                <Row label="Clock Out" value={formatTime(ts.endTime)} />
+                {ts.breakMinutes > 0 && (
+                  <Row label="Break" value={`${ts.breakMinutes} min`} />
+                )}
+                {rate && <Row label="Rate" value={rate} />}
+                <Row
+                  label="Total Hours"
+                  value={quantity ?? "—"}
+                  bold
+                />
+              </>
             )}
-            <Row
-              label="Total Hours"
-              value={ts.totalHours ? `${Number(ts.totalHours).toFixed(2)} hrs` : "—"}
-              bold
-            />
-            {ts.calculatedPay && (
+            {entryTotal != null && (
               <Row
-                label="Calculated Pay"
-                value={formatCurrency(Number(ts.calculatedPay))}
+                label="Shift Total"
+                value={formatCurrency(entryTotal)}
                 bold
               />
             )}
@@ -151,7 +177,11 @@ export default async function AdminTimesheetDetailPage({
       {/* Actions */}
       {(ts.status === "SUBMITTED" || ts.status === "APPROVED" || ts.status === "REJECTED") && (
         <div className="flex gap-3">
-          <TimesheetActions timesheetId={ts.id} status={ts.status} />
+          <TimesheetActions
+            timesheetId={ts.id}
+            status={ts.status}
+            canApprove={!missingRateIssue}
+          />
         </div>
       )}
 

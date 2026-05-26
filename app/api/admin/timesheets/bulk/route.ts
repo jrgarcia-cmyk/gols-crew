@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
+import { getWeekMissingRateIssues } from "@/lib/timesheet-approval";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -19,9 +20,20 @@ export async function POST(request: NextRequest) {
   const weekEndDate = new Date(weekStart);
   weekEndDate.setDate(weekEndDate.getDate() + 7);
 
-  const isReopen = action === "SUBMITTED";
+  if (action === "APPROVED") {
+    const issues = await getWeekMissingRateIssues(contractorId, weekStartDate, weekEndDate);
+    if (issues.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Cannot approve week until missing pay rates are added.",
+          issues,
+        },
+        { status: 400 }
+      );
+    }
+  }
 
-  // When reopening, target APPROVED or REJECTED entries; otherwise target SUBMITTED
+  const isReopen = action === "SUBMITTED";
   const targetStatus = isReopen ? { in: ["APPROVED", "REJECTED"] as never[] } : ("SUBMITTED" as never);
 
   const result = await db.timesheet.updateMany({

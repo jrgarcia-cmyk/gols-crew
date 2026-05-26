@@ -1,7 +1,8 @@
 "use client";
 
-import { use } from "react";
-import { RateForm } from "../rate-form";
+import { use, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { PAY_TYPE_OPTIONS, RateForm } from "../rate-form";
 
 export default function NewRatePage({
   params,
@@ -9,6 +10,13 @@ export default function NewRatePage({
   params: Promise<{ id: string }>;
 }) {
   const { id: contractorId } = use(params);
+  const searchParams = useSearchParams();
+  const payType = useMemo(() => {
+    const requested = searchParams.get("payType");
+    return PAY_TYPE_OPTIONS.some((option) => option.value === requested)
+      ? requested!
+      : "HOURLY";
+  }, [searchParams]);
 
   return (
     <RateForm
@@ -18,7 +26,7 @@ export default function NewRatePage({
       initialValues={{
         label: "",
         role: "",
-        payType: "HOURLY",
+        payType,
         rateAmount: "",
         isDefault: false,
       }}

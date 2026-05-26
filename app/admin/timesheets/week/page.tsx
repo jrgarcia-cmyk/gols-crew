@@ -5,6 +5,14 @@ import { formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
+import { MissingRateAlert } from "@/components/admin/missing-rate-alert";
+import {
+  getMissingRateIssue,
+  uniqueMissingRateIssues,
+  type TimesheetRateCheckEntry,
+} from "@/lib/timesheet-rate-validation";
+import { getTimesheetPayType, formatTimesheetQuantity } from "@/lib/timesheet-pay";
+import { isPerGamePayType } from "@/lib/pay-type";
 import Link from "next/link";
 import { WeekActions } from "./week-actions";
 import { TimesheetActions } from "../timesheet-actions";
@@ -42,22 +50,57 @@ export default async function AdminTimesheetWeekPage({
 
   if (!contractor) notFound();
 
-  const entries = await db.timesheet.findMany({
-    where: {
-      contractorId,
-      entryDate: {
-        gte: weekStartDate,
-        lt: weekEndDate,
+  const [entries, contractorRates] = await Promise.all([
+    db.timesheet.findMany({
+      where: {
+        contractorId,
+        entryDate: {
+          gte: weekStartDate,
+          lt: weekEndDate,
+        },
       },
-    },
-    include: {
-      event: { select: { name: true } },
-      jobCategory: { select: { name: true, color: true } },
-      jobSubItem: { select: { name: true } },
-      approvedBy: { select: { email: true } },
-    },
-    orderBy: { entryDate: "asc" },
-  });
+      include: {
+        event: { select: { name: true, payType: true } },
+        assignment: {
+          select: {
+            payTypeSnapshot: true,
+            rateAmountSnapshot: true,
+            rateLabelSnapshot: true,
+            role: true,
+          },
+        },
+        jobCategory: { select: { name: true, color: true } },
+        jobSubItem: { select: { name: true } },
+        approvedBy: { select: { email: true } },
+      },
+      orderBy: { entryDate: "asc" },
+    }),
+    db.contractorRate.findMany({
+      where: { contractorId, active: true },
+      select: {
+        id: true,
+        label: true,
+        role: true,
+        payType: true,
+        rateAmount: true,
+        isDefault: true,
+      },
+    }),
+  ]);
+
+  const entryIssues = new Map(
+    entries.map((entry) => [
+      entry.id,
+      getMissingRateIssue(entry as TimesheetRateCheckEntry, contractorId, contractorRates),
+    ])
+  );
+
+  const submittedMissingIssues = entries
+    .filter((entry) => entry.status === "SUBMITTED")
+    .map((entry) => entryIssues.get(entry.id) ?? null);
+
+  const uniqueSubmittedIssues = uniqueMissingRateIssues(submittedMissingIssues);
+  const canApproveWeek = uniqueSubmittedIssues.length === 0;
 
   const contractorName =
     contractor.preferredName ?? `${contractor.firstName} ${contractor.lastName}`;
@@ -116,6 +159,8 @@ export default async function AdminTimesheetWeekPage({
         </div>
       </div>
 
+      <MissingRateAlert issues={uniqueSubmittedIssues} />
+
       {/* Bulk actions */}
       {hasSubmitted && !allApproved && !allRejected && (
         <Card>
@@ -128,7 +173,12 @@ export default async function AdminTimesheetWeekPage({
                   {entries.filter((e) => e.status === "SUBMITTED").length === 1 ? "entry" : "entries"} at once
                 </p>
               </div>
-              <WeekActions contractorId={contractorId} weekStart={weekStart} mode="review" />
+              <WeekActions
+                contractorId={contractorId}
+                weekStart={weekStart}
+                mode="review"
+                canApprove={canApproveWeek}
+              />
             </div>
           </CardContent>
         </Card>
@@ -164,8 +214,22 @@ export default async function AdminTimesheetWeekPage({
           {entries.length === 0 ? (
             <p className="px-6 py-4 text-sm text-gray-400">No entries for this week.</p>
           ) : (
-            entries.map((entry) => (
+            entries.map((entry) => {
+              const missingRate = entryIssues.get(entry.id);
+              const payType = getTimesheetPayType(entry);
+              const perGame = isPerGamePayType(payType);
+              const quantity = formatTimesheetQuantity(entry);
+
+              return (
               <div key={entry.id} className="px-6 py-4 space-y-1">
+                {missingRate && entry.status === "SUBMITTED" && (
+                  <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {missingRate.message}.{" "}
+                    <Link href={missingRate.addRateUrl} className="font-semibold underline">
+                      Add rate →
+                    </Link>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     {/* Date */}
@@ -192,12 +256,18 @@ export default async function AdminTimesheetWeekPage({
                         <span className="text-sm font-semibold text-gray-900">{entry.event.name}</span>
                       )}
                     </div>
-                    {/* Times */}
-                    {entry.startTime && (
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {formatTime(entry.startTime)} – {formatTime(entry.endTime)}
-                        {entry.breakMinutes > 0 && ` · ${entry.breakMinutes}m break`}
-                      </p>
+                    {/* Times / games */}
+                    {perGame ? (
+                      quantity && (
+                        <p className="text-xs text-gray-400 mt-0.5">{quantity}</p>
+                      )
+                    ) : (
+                      entry.startTime && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {formatTime(entry.startTime)} – {formatTime(entry.endTime)}
+                          {entry.breakMinutes > 0 && ` · ${entry.breakMinutes}m break`}
+                        </p>
+                      )
                     )}
                     {entry.notes && (
                       <p className="text-xs text-gray-400 italic mt-0.5">{entry.notes}</p>
@@ -206,7 +276,7 @@ export default async function AdminTimesheetWeekPage({
 
                   <div className="flex flex-col items-end gap-1.5 shrink-0">
                     <span className="text-sm font-bold text-gray-900">
-                      {entry.totalHours ? `${Number(entry.totalHours).toFixed(2)} hrs` : "—"}
+                      {quantity ?? (entry.totalHours ? `${Number(entry.totalHours).toFixed(2)} hrs` : "—")}
                     </span>
                     {entry.calculatedPay && (
                       <span className="text-xs text-gray-500">{formatCurrency(Number(entry.calculatedPay))}</span>
@@ -218,7 +288,11 @@ export default async function AdminTimesheetWeekPage({
                 {/* Per-entry actions */}
                 {(entry.status === "SUBMITTED" || entry.status === "APPROVED" || entry.status === "REJECTED") && (
                   <div className="flex items-center gap-3 pt-1">
-                    <TimesheetActions timesheetId={entry.id} status={entry.status} />
+                    <TimesheetActions
+                      timesheetId={entry.id}
+                      status={entry.status}
+                      canApprove={!missingRate}
+                    />
                     <Link
                       href={`/admin/timesheets/${entry.id}`}
                       className="text-xs text-gray-400 hover:text-gray-700"
@@ -236,7 +310,8 @@ export default async function AdminTimesheetWeekPage({
                   </p>
                 )}
               </div>
-            ))
+            );
+            })
           )}
         </CardContent>
       </Card>

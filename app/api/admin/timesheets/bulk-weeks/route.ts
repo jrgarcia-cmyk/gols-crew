@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
+import { getWeekMissingRateIssues } from "@/lib/timesheet-approval";
 import { NextResponse, type NextRequest } from "next/server";
 
 type BulkAction = "APPROVED" | "REJECTED" | "PAID" | "SUBMITTED";
@@ -25,6 +26,34 @@ export async function POST(request: NextRequest) {
   }
   if (!["APPROVED", "REJECTED", "PAID", "SUBMITTED"].includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+
+  if (action === "APPROVED" || action === "PAID") {
+    const results = await Promise.all(
+      pairs.map(async ({ contractorId, weekStart }) => {
+        const weekStartDate = new Date(weekStart);
+        const weekEndDate = new Date(weekStart);
+        weekEndDate.setDate(weekEndDate.getDate() + 7);
+        const issues = await getWeekMissingRateIssues(
+          contractorId,
+          weekStartDate,
+          weekEndDate,
+          action === "APPROVED" ? ["SUBMITTED"] : ["APPROVED"]
+        );
+        return { contractorId, weekStart, issues };
+      })
+    );
+
+    const blocked = results.filter((result) => result.issues.length > 0);
+    if (blocked.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Cannot approve weeks until missing pay rates are added.",
+          blocked,
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const isReopen = action === "SUBMITTED";

@@ -8,22 +8,34 @@ export function WeekActions({
   contractorId,
   weekStart,
   mode,
+  canApprove = true,
 }: {
   contractorId: string;
   weekStart: string;
-  /** "review" = show Approve/Reject; "reopen" = show Reopen */
   mode: "review" | "reopen";
+  canApprove?: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   async function handleAction(action: "APPROVED" | "REJECTED" | "SUBMITTED") {
     setLoading(action);
-    await fetch("/api/admin/timesheets/bulk", {
+    setError("");
+
+    const res = await fetch("/api/admin/timesheets/bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contractorId, weekStart, action }),
     });
+
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error ?? "Unable to update week.");
+      setLoading(null);
+      return;
+    }
+
     router.refresh();
     setLoading(null);
   }
@@ -42,23 +54,27 @@ export function WeekActions({
   }
 
   return (
-    <div className="flex gap-2">
-      <Button
-        size="sm"
-        variant="primary"
-        loading={loading === "APPROVED"}
-        onClick={() => handleAction("APPROVED")}
-      >
-        Approve Week
-      </Button>
-      <Button
-        size="sm"
-        variant="danger"
-        loading={loading === "REJECTED"}
-        onClick={() => handleAction("REJECTED")}
-      >
-        Reject Week
-      </Button>
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="primary"
+          loading={loading === "APPROVED"}
+          disabled={!canApprove}
+          onClick={() => handleAction("APPROVED")}
+        >
+          Approve Week
+        </Button>
+        <Button
+          size="sm"
+          variant="danger"
+          loading={loading === "REJECTED"}
+          onClick={() => handleAction("REJECTED")}
+        >
+          Reject Week
+        </Button>
+      </div>
+      {error && <p className="text-xs text-red-600 max-w-xs text-right">{error}</p>}
     </div>
   );
 }

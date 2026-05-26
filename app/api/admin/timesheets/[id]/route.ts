@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { assertTimesheetCanBeApproved } from "@/lib/timesheet-approval";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function PATCH(
@@ -17,6 +18,16 @@ export async function PATCH(
 
   if (!["APPROVED", "REJECTED", "PAID", "SUBMITTED"].includes(status)) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  }
+
+  if (status === "APPROVED" || status === "PAID") {
+    const validation = await assertTimesheetCanBeApproved(id);
+    if (!validation.ok) {
+      return NextResponse.json(
+        { error: validation.error, issue: validation.issue },
+        { status: 400 }
+      );
+    }
   }
 
   const isReopen = status === "SUBMITTED";
