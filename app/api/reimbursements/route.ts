@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { objectExistsInS3, parseReceiptStorageKey } from "@/lib/s3";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -13,6 +14,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  if (receiptUrl) {
+    const key = parseReceiptStorageKey(receiptUrl);
+    if (!key || !(await objectExistsInS3(key))) {
+      return NextResponse.json(
+        { error: "Receipt upload did not complete. Please try uploading the file again." },
+        { status: 400 }
+      );
+    }
+  }
+
   const reimbursement = await db.reimbursement.create({
     data: {
       contractorId,
@@ -21,7 +32,7 @@ export async function POST(request: NextRequest) {
       amount,
       category,
       notes: notes ?? null,
-      receiptUrl: receiptUrl ?? null,
+      receiptUrl: receiptUrl ? parseReceiptStorageKey(receiptUrl) : null,
       status: "SUBMITTED",
     },
   });

@@ -1,10 +1,12 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { objectExistsInS3, parseReceiptStorageKey } from "@/lib/s3";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ReimbursementActions } from "./reimbursement-actions";
+import { ReimbursementReceiptUpload } from "./receipt-upload";
 
 export default async function AdminReimbursementsPage({
   searchParams,
@@ -23,6 +25,18 @@ export default async function AdminReimbursementsPage({
     },
     orderBy: { submittedAt: "desc" },
   });
+
+  const receiptAvailability = new Map<string, boolean>();
+  await Promise.all(
+    reimbursements.map(async (r) => {
+      if (!r.receiptUrl) return;
+      const key = parseReceiptStorageKey(r.receiptUrl);
+      receiptAvailability.set(
+        r.id,
+        key ? await objectExistsInS3(key) : false
+      );
+    })
+  );
 
   return (
     <div className="space-y-6">
@@ -85,15 +99,24 @@ export default async function AdminReimbursementsPage({
                       <Badge variant={statusBadge(r.status)}>{r.status}</Badge>
                     </td>
                     <td className="px-6 py-4">
-                      {r.receiptUrl && (
-                        <a
-                          href={`/api/reimbursements/${r.id}/receipt`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          Receipt
-                        </a>
+                      {r.receiptUrl ? (
+                        receiptAvailability.get(r.id) ? (
+                          <a
+                            href={`/api/reimbursements/${r.id}/receipt`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            Receipt
+                          </a>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="text-xs text-amber-700 font-medium">Missing file</span>
+                            <ReimbursementReceiptUpload reimbursementId={r.id} />
+                          </div>
+                        )
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
                       )}
                     </td>
                     <td className="px-6 py-4">

@@ -49,20 +49,47 @@ export function ReimbursementForm({
     setError("");
 
     try {
-      // Upload receipt
-      const uploadForm = new FormData();
-      uploadForm.append("file", receiptFile!);
-      const uploadRes = await fetch("/api/upload/receipt", {
+      const contentType = receiptFile.type || "application/octet-stream";
+
+      // Upload directly to S3 (avoids Lambda body-size limits)
+      const presignRes = await fetch("/api/upload/presign", {
         method: "POST",
-        body: uploadForm,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: receiptFile.name,
+          contentType,
+        }),
       });
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) {
-        setError(uploadData.error ?? "Receipt upload failed. Please try again.");
+      const presignData = await presignRes.json();
+      if (!presignRes.ok) {
+        setError(presignData.error ?? "Could not prepare receipt upload.");
         setLoading(false);
         return;
       }
-      const receiptUrl = uploadData.key ?? uploadData.url;
+
+      const putRes = await fetch(presignData.presignedUrl, {
+        method: "PUT",
+        body: receiptFile,
+        headers: { "Content-Type": contentType },
+      });
+      if (!putRes.ok) {
+        setError("Receipt upload failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const verifyRes = await fetch("/api/upload/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: presignData.key }),
+      });
+      if (!verifyRes.ok) {
+        setError("Receipt could not be verified after upload. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const receiptUrl = presignData.key;
 
       // Submit reimbursement
       const res = await fetch("/api/reimbursements", {

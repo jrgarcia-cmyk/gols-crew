@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Upload } from "@aws-sdk/lib-storage";
@@ -76,6 +77,11 @@ export async function uploadToS3(
 
   await upload.done();
 
+  const exists = await objectExistsInS3(key);
+  if (!exists) {
+    throw new Error("Upload completed but file could not be verified in storage.");
+  }
+
   const cfUrl = getCloudFrontUrl();
   const url = cfUrl
     ? `${cfUrl.replace(/\/$/, "")}/${key}`
@@ -145,6 +151,23 @@ export function parseReceiptStorageKey(stored: string): string | null {
 }
 
 /**
+ * Check whether an object exists in the uploads bucket.
+ */
+export async function objectExistsInS3(key: string): Promise<boolean> {
+  const bucket = getBucketName();
+  if (!bucket) return false;
+
+  try {
+    await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return true;
+  } catch (err) {
+    const code = (err as { name?: string; Code?: string }).name ?? (err as { Code?: string }).Code;
+    if (code === "NotFound" || code === "NoSuchKey") return false;
+    throw err;
+  }
+}
+
+/**
  * Generate a short-lived presigned GET URL for a private S3 object.
  */
 export async function getPresignedDownloadUrl(
@@ -153,6 +176,11 @@ export async function getPresignedDownloadUrl(
 ): Promise<string> {
   const bucket = getBucketName();
   if (!bucket) throw new Error("S3 bucket name not configured.");
+
+  const exists = await objectExistsInS3(key);
+  if (!exists) {
+    throw new Error("RECEIPT_NOT_FOUND");
+  }
 
   const command = new GetObjectCommand({
     Bucket: bucket,
