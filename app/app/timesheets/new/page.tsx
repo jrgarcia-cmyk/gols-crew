@@ -19,16 +19,21 @@ export default async function NewTimesheetPage() {
       },
     }),
     contractor
-      ? db.eventAssignment.findMany({
+      ? db.event.findMany({
           where: {
-            contractorId: contractor.id,
-            event: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] } },
+            status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] },
           },
-          orderBy: { event: { startDatetime: "desc" } },
-          take: 30,
+          orderBy: { startDatetime: "desc" },
+          take: 100,
           select: {
-            role: true,
-            event: { select: { id: true, name: true, startDatetime: true } },
+            id: true,
+            name: true,
+            startDatetime: true,
+            assignments: {
+              where: { contractorId: contractor.id },
+              take: 1,
+              select: { id: true, role: true },
+            },
           },
         })
       : [],
@@ -56,11 +61,12 @@ export default async function NewTimesheetPage() {
         <TimeEntryForm
           contractorId={contractor.id}
           categories={categories}
-          events={events.map((a) => ({
-            id: a.event.id,
-            name: a.event.name,
-            startDatetime: a.event.startDatetime,
-            role: a.role,
+          events={events.map((event) => ({
+            id: event.id,
+            name: event.name,
+            startDatetime: event.startDatetime,
+            role: event.assignments[0]?.role ?? null,
+            assignmentId: event.assignments[0]?.id ?? null,
           }))}
         />
       )}

@@ -1,7 +1,68 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { fetchAirtableEvents, fetchAirtableAssignments } from "@/services/airtable";
+import {
+  type AirtableAssignment,
+  type AirtableContractor,
+  fetchAirtableAssignments,
+  fetchAirtableContractors,
+  fetchAirtableEvents,
+} from "@/services/airtable";
 import { NextResponse } from "next/server";
+
+function normalizePhone(value: string | null | undefined) {
+  return value?.replace(/\D/g, "") ?? "";
+}
+
+function nameParts(value: string | undefined) {
+  const parts = value?.trim().split(/\s+/).filter(Boolean) ?? [];
+  return {
+    firstName: parts[0],
+    lastName: parts.length > 1 ? parts[parts.length - 1] : undefined,
+  };
+}
+
+async function findContractor(
+  assignment: AirtableAssignment,
+  airtableContractorsById: Map<string, AirtableContractor>
+) {
+  const airtableContractor = assignment.contractorAirtableId
+    ? airtableContractorsById.get(assignment.contractorAirtableId)
+    : undefined;
+  const email = (assignment.contractorEmail ?? airtableContractor?.email)?.toLowerCase();
+  if (email) {
+    const contractor = await db.contractor.findUnique({ where: { email } });
+    if (contractor) return contractor;
+  }
+
+  const phone = normalizePhone(assignment.contractorPhone ?? airtableContractor?.phone);
+  if (phone) {
+    const candidates = await db.contractor.findMany({
+      where: { OR: [{ phone: { not: null } }, { countryCode: { not: null } }] },
+      select: { id: true, phone: true, countryCode: true },
+    });
+    const match = candidates.find((contractor) => {
+      const contractorPhone = normalizePhone(`${contractor.countryCode ?? ""}${contractor.phone ?? ""}`);
+      return contractorPhone.length > 0 && (contractorPhone.endsWith(phone) || phone.endsWith(contractorPhone));
+    });
+    if (match) return db.contractor.findUnique({ where: { id: match.id } });
+  }
+
+  const fallbackName =
+    assignment.contractorName ??
+    airtableContractor?.fullName ??
+    [airtableContractor?.firstName, airtableContractor?.lastName].filter(Boolean).join(" ");
+  const { firstName, lastName } = nameParts(fallbackName);
+  if (firstName && lastName) {
+    return db.contractor.findFirst({
+      where: {
+        firstName: { equals: firstName, mode: "insensitive" },
+        lastName: { equals: lastName, mode: "insensitive" },
+      },
+    });
+  }
+
+  return null;
+}
 
 export async function POST() {
   const user = await getCurrentUser();
@@ -13,6 +74,7 @@ export async function POST() {
     const airtableEvents = await fetchAirtableEvents();
     const now = new Date();
     let synced = 0;
+    let assignmentsSynced = 0;
 
     for (const ae of airtableEvents) {
       const statusMap: Record<string, string> = {
@@ -57,18 +119,23 @@ export async function POST() {
       synced++;
     }
 
-    // Try to sync assignments if available
+    // Stream Details owns staffing. Resolve its Staffing links through All GOLS Contractors.
     try {
-      const assignments = await fetchAirtableAssignments();
+      const [assignments, airtableContractors] = await Promise.all([
+        fetchAirtableAssignments(),
+        fetchAirtableContractors(),
+      ]);
+      const airtableContractorsById = new Map(
+        airtableContractors.map((contractor) => [contractor.airtableId, contractor])
+      );
+
       for (const aa of assignments) {
         const event = await db.event.findUnique({
           where: { airtableEventId: aa.eventAirtableId },
         });
         if (!event) continue;
 
-        const contractor = aa.contractorEmail
-          ? await db.contractor.findUnique({ where: { email: aa.contractorEmail.toLowerCase() } })
-          : null;
+        const contractor = await findContractor(aa, airtableContractorsById);
 
         if (!contractor) continue;
 
@@ -81,18 +148,24 @@ export async function POST() {
             role: aa.role,
             callTime: aa.callTime,
             status: "CONFIRMED",
+            notes: aa.notes,
           },
           update: {
+            eventId: event.id,
+            contractorId: contractor.id,
             role: aa.role,
             callTime: aa.callTime,
+            notes: aa.notes,
+            status: "CONFIRMED",
           },
         });
+        assignmentsSynced++;
       }
     } catch {
       // Assignments table may not exist or have different name — continue
     }
 
-    return NextResponse.json({ synced });
+    return NextResponse.json({ synced, assignmentsSynced });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Sync failed";
     return NextResponse.json({ error: msg }, { status: 500 });

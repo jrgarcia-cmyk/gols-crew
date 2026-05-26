@@ -9,7 +9,13 @@ import { DayPicker } from "./day-picker";
 
 type SubItem = { id: string; name: string };
 type Category = { id: string; name: string; color: string | null; subItems: SubItem[] };
-type EventOption = { id: string; name: string; startDatetime: Date; role: string | null };
+type EventOption = {
+  id: string;
+  name: string;
+  startDatetime: Date;
+  role: string | null;
+  assignmentId: string | null;
+};
 
 export interface InitialValues {
   entryDate: string;   // YYYY-MM-DD
@@ -56,6 +62,7 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
   const [notes, setNotes] = useState(initialValues?.notes ?? "");
 
   const selectedCategory = categories.find((c) => c.id === jobCategoryId);
+  const selectedEvent = events.find((event) => event.id === eventId);
 
   // Computed hours preview
   let hoursPreview = "";
@@ -77,6 +84,7 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
 
     const payload = {
       contractorId,
+      assignmentId: selectedEvent?.assignmentId ?? null,
       entryDate,
       startTime: `${entryDate}T${startTime}`,
       endTime: `${entryDate}T${endTime}`,
@@ -124,7 +132,7 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
         </label>
 
         {events.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">No upcoming events assigned to you.</p>
+          <p className="text-sm text-gray-400 italic">No active events available.</p>
         ) : (
           <div className="space-y-2">
             {/* "No event" option */}
@@ -164,7 +172,7 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
                     </span>
                     <span className="block text-xs text-gray-400 mt-0.5">
                       {formatEventDate(ev.startDatetime)}
-                      {ev.role && <> · {ev.role}</>}
+                      {ev.role ? <> · {ev.role}</> : <> · not assigned</>}
                       {isPast && <span className="ml-1 text-gray-300">(past)</span>}
                     </span>
                   </span>
