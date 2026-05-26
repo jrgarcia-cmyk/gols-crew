@@ -176,6 +176,8 @@ function parseAssignmentRecords(records: AirtableRecord[]): AirtableAssignment[]
   return records.flatMap((r) => {
     const f = r.fields;
     const eventAirtableId = stringArrayField(f, ["Event Name", "Event", "Events"])[0] ?? "";
+    if (!eventAirtableId) return [];
+
     const contractorAirtableIds = stringArrayField(f, ["Staffing", "Staff", "Crew"]);
     const contractorEmails = stringArrayField(f, ["Email", "Staff Email", "Contractor Email", "Crew Email"]);
     const contractorNames = stringArrayField(f, ["Name", "Staff Name", "Contractor", "Crew Member"]);
@@ -183,22 +185,34 @@ function parseAssignmentRecords(records: AirtableRecord[]): AirtableAssignment[]
     const role = stringField(f, ["Role", "Position", "Crew Role", "Stream Role"]);
     const notes = stringField(f, ["Stream Notes", "Notes", "Staffing Notes"]);
     const callTime = dateField(f, ["Stream Start", "Call Time", "Start Time"], streamDate);
-    const max = Math.max(contractorAirtableIds.length, contractorEmails.length, contractorNames.length, 1);
 
-    return Array.from({ length: max }, (_, index) => ({
-      airtableId: [r.id, contractorAirtableIds[index] ?? contractorEmails[index] ?? contractorNames[index] ?? index].join(":"),
+    // Staffing link field is the source of truth when it has entries.
+    // Do not expand from Email/Name lookups — those often stay populated after
+    // someone is removed from Staffing and cause ghost crew members.
+    type Slot = { contractorAirtableId?: string; contractorEmail?: string; contractorName?: string };
+    let slots: Slot[] = [];
+
+    if (contractorAirtableIds.length > 0) {
+      slots = contractorAirtableIds.map((id) => ({ contractorAirtableId: id }));
+    } else if (contractorEmails.length > 0) {
+      slots = contractorEmails.map((email) => ({ contractorEmail: email }));
+    } else if (contractorNames.length > 0) {
+      slots = contractorNames.map((name) => ({ contractorName: name }));
+    }
+
+    return slots.map((slot, index) => ({
+      airtableId: [
+        r.id,
+        slot.contractorAirtableId ?? slot.contractorEmail ?? slot.contractorName ?? index,
+      ].join(":"),
       eventAirtableId,
-      contractorAirtableId: contractorAirtableIds[index],
-      contractorEmail: contractorEmails[index],
-      contractorName: contractorNames[index],
+      contractorAirtableId: slot.contractorAirtableId,
+      contractorEmail: slot.contractorEmail,
+      contractorName: slot.contractorName,
       role,
       callTime,
       notes,
-    })).filter((assignment) => assignment.eventAirtableId && (
-      assignment.contractorAirtableId ||
-      assignment.contractorEmail ||
-      assignment.contractorName
-    ));
+    }));
   });
 }
 

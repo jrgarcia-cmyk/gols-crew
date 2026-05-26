@@ -12,6 +12,9 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WeekPicker } from "./week-picker";
 import { TimesheetsTable, type WeekRow } from "./timesheets-table";
+import { CloseWeekButton } from "./close-week-button";
+import { isWeekClosed } from "@/lib/timesheet-week-close";
+import { getRequireShiftApproval } from "@/lib/app-settings";
 import Link from "next/link";
 
 function formatDateShort(dt: Date | string) {
@@ -138,9 +141,11 @@ export default async function AdminTimesheetsPage({
   const statusFilter = sp.status ?? "SUBMITTED";
   const weekStart = sp.weekStart ?? null;
 
-  const [timesheets, weekStartDay] = await Promise.all([
+  const [timesheets, weekStartDay, requireShiftApproval, weekIsClosed] = await Promise.all([
     fetchTimesheets(statusFilter, weekStart),
     getWeekStartDay(),
+    getRequireShiftApproval(),
+    weekStart ? isWeekClosed(weekStart) : Promise.resolve(false),
   ]);
 
   const contractorIds = [...new Set(timesheets.map((ts) => ts.contractorId))];
@@ -214,6 +219,20 @@ export default async function AdminTimesheetsPage({
         >
           All weeks
         </Link>
+
+        {weekStart && (
+          <div className="ml-auto flex items-center gap-2">
+            {weekIsClosed && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Closed for payroll
+              </span>
+            )}
+            <CloseWeekButton weekStart={weekStart} isClosed={weekIsClosed} />
+          </div>
+        )}
       </div>
 
       {/* Status filter */}
@@ -237,7 +256,11 @@ export default async function AdminTimesheetsPage({
       {rows.length === 0 ? (
         <EmptyState title="No timesheets" description="No timesheets match the current filter." />
       ) : (
-        <TimesheetsTable rows={rows} />
+        <TimesheetsTable
+          rows={rows}
+          requireShiftApproval={requireShiftApproval}
+          weekIsClosed={weekIsClosed}
+        />
       )}
     </div>
   );

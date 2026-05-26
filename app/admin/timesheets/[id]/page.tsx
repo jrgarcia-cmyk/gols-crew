@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getRequireShiftApproval } from "@/lib/app-settings";
 import { notFound } from "next/navigation";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
@@ -41,7 +42,10 @@ export default async function AdminTimesheetDetailPage({
 
   if (!ts) notFound();
 
-  const contractorRates = await fetchActiveContractorRates(ts.contractorId);
+  const [contractorRates, requireShiftApproval] = await Promise.all([
+    fetchActiveContractorRates(ts.contractorId),
+    getRequireShiftApproval(),
+  ]);
   const payCtx = { contractorRates };
 
   const missingRateIssue = await getTimesheetMissingRateIssue(id);
@@ -179,7 +183,8 @@ export default async function AdminTimesheetDetailPage({
       )}
 
       {/* Actions */}
-      {(ts.status === "SUBMITTED" || ts.status === "APPROVED" || ts.status === "REJECTED") && (
+      {requireShiftApproval &&
+        (ts.status === "SUBMITTED" || ts.status === "APPROVED" || ts.status === "REJECTED") && (
         <div className="flex gap-3">
           <TimesheetActions
             timesheetId={ts.id}

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import type { PayType } from "@/app/generated/prisma";
+import { assertTimesheetWeekOpen } from "@/lib/timesheet-week-close";
 import { computeTimesheetPayForContractor } from "@/lib/timesheet-calc-server";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -82,12 +83,18 @@ export async function POST(request: NextRequest) {
     contractorId
   );
 
+  const resolvedEntryDate = entryDate ? new Date(entryDate) : (start ?? new Date());
+  const weekCheck = await assertTimesheetWeekOpen(resolvedEntryDate);
+  if (!weekCheck.ok) {
+    return NextResponse.json({ error: weekCheck.error }, { status: 400 });
+  }
+
   const timesheet = await db.timesheet.create({
     data: {
       contractorId,
       eventId: eventId || null,
       assignmentId: assignmentId || null,
-      entryDate: entryDate ? new Date(entryDate) : (start ?? new Date()),
+      entryDate: resolvedEntryDate,
       jobCategoryId: jobCategoryId || null,
       jobSubItemId: jobSubItemId || null,
       startTime: parsedGames && parsedGames > 0 ? null : start,

@@ -67,7 +67,11 @@ export default async function ContractorEventsPage() {
       };
     }),
     ...dbAssignments
-      .filter((assignment) => !seenEventIds.has(assignment.eventId))
+      .filter((assignment) => {
+        if (seenEventIds.has(assignment.eventId)) return false;
+        if (isAirtableConfigured() && assignment.event.airtableEventId) return false;
+        return true;
+      })
       .map((assignment) => ({
         id: assignment.id,
         role: assignment.role,

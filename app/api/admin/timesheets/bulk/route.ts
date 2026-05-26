@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { getWeekMissingRateIssues } from "@/lib/timesheet-approval";
+import { assertWeekStartOpen } from "@/lib/timesheet-week-close";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -14,6 +15,11 @@ export async function POST(request: NextRequest) {
 
   if (!["APPROVED", "REJECTED", "SUBMITTED"].includes(action)) {
     return NextResponse.json({ error: "action must be APPROVED, REJECTED, or SUBMITTED" }, { status: 400 });
+  }
+
+  const weekCheck = await assertWeekStartOpen(weekStart);
+  if (!weekCheck.ok) {
+    return NextResponse.json({ error: weekCheck.error }, { status: 400 });
   }
 
   const weekStartDate = new Date(weekStart);

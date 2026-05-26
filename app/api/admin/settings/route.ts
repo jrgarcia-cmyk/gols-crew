@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { NextResponse, type NextRequest } from "next/server";
 
-const ALLOWED_KEYS = ["weekStartDay"];
+const ALLOWED_KEYS = ["weekStartDay", "requireShiftApproval"];
 
 export async function PATCH(request: NextRequest) {
   await requireRole("ADMIN", "SUPER_ADMIN");

@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sortEventsMostCurrentFirst } from "@/lib/events";
 import { isContractorEditableStatus, toDatetimeLocalValue } from "@/lib/timesheet-edit";
+import { assertTimesheetWeekOpen } from "@/lib/timesheet-week-close";
 import { isPerGamePayType } from "@/lib/pay-type";
 import {
   fetchActiveContractorRates,
@@ -73,6 +74,11 @@ export default async function EditTimesheetPage({
   if (!entry || entry.contractorId !== contractor.id) notFound();
 
   if (!isContractorEditableStatus(entry.status)) {
+    redirect("/app/timesheets");
+  }
+
+  const weekCheck = await assertTimesheetWeekOpen(entry.entryDate);
+  if (!weekCheck.ok) {
     redirect("/app/timesheets");
   }
 

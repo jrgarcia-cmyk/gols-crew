@@ -28,7 +28,15 @@ const BULK_ACTIONS: { action: string; label: string; style: string }[] = [
   { action: "SUBMITTED",label: "Reopen",     style: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300" },
 ];
 
-export function TimesheetsTable({ rows }: { rows: WeekRow[] }) {
+export function TimesheetsTable({
+  rows,
+  requireShiftApproval = true,
+  weekIsClosed = false,
+}: {
+  rows: WeekRow[];
+  requireShiftApproval?: boolean;
+  weekIsClosed?: boolean;
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
@@ -56,6 +64,8 @@ export function TimesheetsTable({ rows }: { rows: WeekRow[] }) {
   }
 
   async function handleBulkAction(action: string) {
+    if (weekIsClosed) return;
+
     const pairs = rows
       .filter((r) => selected.has(r.key))
       .map((r) => ({ contractorId: r.contractorId, weekStart: r.weekStart }));
@@ -187,7 +197,7 @@ export function TimesheetsTable({ rows }: { rows: WeekRow[] }) {
       {/* Bulk action bar — floats at bottom when rows are selected */}
       <div
         className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ${
-          someSelected ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+          someSelected && !weekIsClosed ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         }`}
       >
         <div className="flex items-center gap-2 bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-2xl">
@@ -196,12 +206,18 @@ export function TimesheetsTable({ rows }: { rows: WeekRow[] }) {
             {selected.size} {selected.size === 1 ? "week" : "weeks"} selected
           </span>
 
+          {!requireShiftApproval && (
+            <span className="text-xs text-gray-300 pr-2 border-r border-gray-700 mr-1">
+              Week approval mode
+            </span>
+          )}
+
           {/* Actions */}
           {BULK_ACTIONS.map(({ action, label, style }) => (
             <button
               key={action}
               onClick={() => handleBulkAction(action)}
-              disabled={!!actionLoading || isPending}
+              disabled={!!actionLoading || isPending || weekIsClosed}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${style}`}
             >
               {actionLoading === action ? (

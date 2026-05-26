@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getLiveCrewCount, getLiveStaffingCountsByAirtableEventId } from "@/lib/airtable-staffing-live";
+import { isAirtableConfigured, syncStaffingFromAirtable } from "@/services/airtable-staffing-sync";
 import { formatDate } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -9,6 +10,13 @@ import Link from "next/link";
 
 export default async function ManagerEventsPage() {
   await requireRole("MANAGER", "ADMIN", "SUPER_ADMIN");
+  if (isAirtableConfigured()) {
+    try {
+      await syncStaffingFromAirtable();
+    } catch (err) {
+      console.error("Auto staffing sync failed:", err);
+    }
+  }
 
   const events = await db.event.findMany({
     where: { status: { in: ["CONFIRMED", "IN_PROGRESS", "COMPLETED"] } },

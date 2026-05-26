@@ -14,6 +14,7 @@ import { contractorRateSelect } from "@/lib/timesheet-calc";
 import { isPerGamePayType, PAY_TYPE_LABELS } from "@/lib/pay-type";
 import { getWeekStart, shiftDate } from "@/lib/week";
 import { getWeekStartDay } from "@/lib/week-server";
+import { getClosedWeekStartSet } from "@/lib/timesheet-week-close";
 import { isContractorEditableStatus } from "@/lib/timesheet-edit";
 import { formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
@@ -80,6 +81,7 @@ export default async function ContractorTimesheetsPage() {
   ]);
   const payCtx: TimesheetPayContext = { contractorRates };
   const weeks = groupByWeek(entries, weekStartDay);
+  const closedWeeks = await getClosedWeekStartSet(weeks.map(([weekStart]) => weekStart));
 
   return (
     <div className="px-4 py-6 space-y-5">
@@ -118,6 +120,7 @@ export default async function ContractorTimesheetsPage() {
         <div className="space-y-6">
           {weeks.map(([weekStart, group]) => {
             const weekEndStr = shiftDate(weekStart, 6);
+            const weekIsClosed = closedWeeks.has(weekStart);
             const draftEntries = group.filter((e) => e.status === "DRAFT");
             const allSubmitted = draftEntries.length === 0;
             const weekPayTotal = sumWeekPay(group, payCtx);
@@ -150,12 +153,15 @@ export default async function ContractorTimesheetsPage() {
                       </span>
                     )}
 
-                  {contractor && draftEntries.length > 0 && (
+                  {contractor && draftEntries.length > 0 && !weekIsClosed && (
                     <SubmitWeekButton
                       weekStart={weekStart}
                       contractorId={contractor.id}
                       draftCount={draftEntries.length}
                     />
+                  )}
+                  {weekIsClosed && (
+                    <Badge variant="warning" className="shrink-0">Closed</Badge>
                   )}
                   {allSubmitted && (
                     <Badge variant={statusBadge(weekStatusLabel)} className="shrink-0">
@@ -165,7 +171,13 @@ export default async function ContractorTimesheetsPage() {
                   </div>
                 </div>
 
-                {draftEntries.length > 0 && (
+                {weekIsClosed && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                    This week is closed for payroll and cannot be edited.
+                  </p>
+                )}
+
+                {draftEntries.length > 0 && !weekIsClosed && (
                   <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
                     {draftEntries.length === group.length
                       ? "These entries are saved as drafts — submit the week when you're done."
@@ -255,7 +267,7 @@ export default async function ContractorTimesheetsPage() {
                             </p>
                           )}
 
-                              {isContractorEditableStatus(entry.status) && (
+                              {isContractorEditableStatus(entry.status) && !weekIsClosed && (
                             <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between gap-2">
                               <Link
                                 href={`/app/timesheets/edit/${entry.id}`}

@@ -1,4 +1,3 @@
-import { cache } from "react";
 import { db } from "@/lib/db";
 import { pickContractorRate, rateSnapshotFromRate } from "@/lib/rates";
 import type { PayType } from "@/app/generated/prisma";
@@ -127,10 +126,11 @@ async function syncAssignmentsForEvents(
   eventsByAirtableId: Map<string, { id: string; payType: PayType }>,
   airtableContractorsById: Map<string, AirtableContractor>,
   contractorLookups: Awaited<ReturnType<typeof loadContractorLookups>>
-): Promise<StaffingSyncResult> {
+): Promise<StaffingSyncResult & { contractorsByEventId: Map<string, Set<string>> }> {
   let synced = 0;
   let skipped = 0;
   const errors: string[] = [];
+  const contractorsByEventId = new Map<string, Set<string>>();
 
   for (const assignment of assignments) {
     try {
@@ -178,6 +178,10 @@ async function syncAssignmentsForEvents(
           ...rateSnapshot,
         },
       });
+
+      const staffed = contractorsByEventId.get(event.id) ?? new Set<string>();
+      staffed.add(contractor.id);
+      contractorsByEventId.set(event.id, staffed);
       synced++;
     } catch (err) {
       skipped++;
@@ -187,29 +191,23 @@ async function syncAssignmentsForEvents(
     }
   }
 
-  return { synced, skipped, removed: 0, errors };
+  return { synced, skipped, removed: 0, errors, contractorsByEventId };
 }
 
-async function removeStaleSyncedAssignmentsForEvents(
-  assignments: AirtableAssignment[],
-  eventsByAirtableId: Map<string, { id: string; payType: PayType }>
+/** Remove DB assignments for Airtable-linked events that are no longer staffed. */
+async function removeStaleAssignmentsForEvents(
+  eventIds: string[],
+  contractorsByEventId: Map<string, Set<string>>
 ): Promise<number> {
-  const currentIdsByEvent = new Map<string, Set<string>>();
-  for (const assignment of assignments) {
-    const ids = currentIdsByEvent.get(assignment.eventAirtableId) ?? new Set<string>();
-    ids.add(assignment.airtableId);
-    currentIdsByEvent.set(assignment.eventAirtableId, ids);
-  }
-
   let removed = 0;
-  for (const [airtableEventId, event] of eventsByAirtableId) {
-    const currentIds = currentIdsByEvent.get(airtableEventId) ?? new Set<string>();
+
+  for (const eventId of eventIds) {
+    const keepContractorIds = contractorsByEventId.get(eventId) ?? new Set<string>();
     const result = await db.eventAssignment.deleteMany({
       where: {
-        eventId: event.id,
-        airtableAssignmentId: { not: null },
-        ...(currentIds.size > 0
-          ? { NOT: { airtableAssignmentId: { in: [...currentIds] } } }
+        eventId,
+        ...(keepContractorIds.size > 0
+          ? { contractorId: { notIn: [...keepContractorIds] } }
           : {}),
       },
     });
@@ -246,7 +244,7 @@ export async function syncStaffingForEvent(eventAirtableId: string): Promise<Sta
     airtableContractorsById,
     contractorLookups
   );
-  result.removed = await removeStaleSyncedAssignmentsForEvents(assignments, eventsByAirtableId);
+  result.removed = await removeStaleAssignmentsForEvents([event.id], result.contractorsByEventId);
   return result;
 }
 
@@ -277,11 +275,14 @@ export async function syncStaffingFromAirtable(): Promise<StaffingSyncResult> {
     airtableContractorsById,
     contractorLookups
   );
-  result.removed = await removeStaleSyncedAssignmentsForEvents(assignments, eventsByAirtableId);
+  result.removed = await removeStaleAssignmentsForEvents(
+    linkedEvents.map((event) => event.id),
+    result.contractorsByEventId
+  );
   return result;
 }
 
-export const refreshEventStaffing = cache(async (eventAirtableId: string | null | undefined) => {
+export async function refreshEventStaffing(eventAirtableId: string | null | undefined) {
   if (!eventAirtableId || !isAirtableConfigured()) return;
 
   try {
@@ -289,6 +290,6 @@ export const refreshEventStaffing = cache(async (eventAirtableId: string | null 
   } catch (err) {
     console.error("Event staffing refresh failed:", err);
   }
-});
+}
 
 export { isAirtableConfigured };

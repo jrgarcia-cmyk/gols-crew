@@ -3,17 +3,20 @@ import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CopyButton } from "./copy-button";
 import { WeekStartSetting } from "./week-start-setting";
+import { ShiftApprovalSetting } from "./shift-approval-setting";
 import { getWeekStartDay } from "@/lib/week-server";
+import { getRequireShiftApproval } from "@/lib/app-settings";
 
 export default async function AdminSettingsPage() {
   const user = await requireRole("ADMIN", "SUPER_ADMIN");
 
-  const [users, weekStartDay] = await Promise.all([
+  const [users, weekStartDay, requireShiftApproval] = await Promise.all([
     db.user.findMany({
       include: { contractor: { select: { firstName: true, lastName: true, preferredName: true } } },
       orderBy: { createdAt: "desc" },
     }),
     getWeekStartDay(),
+    getRequireShiftApproval(),
   ]);
 
   return (
@@ -59,8 +62,11 @@ export default async function AdminSettingsPage() {
       {/* Time Tracking */}
       <Card>
         <CardHeader><CardTitle>Time Tracking</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="space-y-8">
           <WeekStartSetting current={weekStartDay} />
+          <div className="border-t border-gray-100 pt-8">
+            <ShiftApprovalSetting current={requireShiftApproval} />
+          </div>
         </CardContent>
       </Card>
 

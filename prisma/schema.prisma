@@ -123,6 +123,7 @@ model User {
   createdBonuses         Bonus[]             @relation("CreatedBonuses")
   approvedBonuses        Bonus[]             @relation("ApprovedBonuses")
   contractorImports      ContractorImport[]
+  closedTimesheetWeeks   ClosedTimesheetWeek[] @relation("ClosedTimesheetWeeks")
 
   @@map("users")
 }
@@ -554,4 +555,14 @@ model AppSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
+}
+
+model ClosedTimesheetWeek {
+  weekStartDate DateTime @id @map("week_start_date") @db.Date
+  closedAt      DateTime @default(now()) @map("closed_at")
+  closedById    String   @map("closed_by_id")
+
+  closedBy User @relation("ClosedTimesheetWeeks", fields: [closedById], references: [id])
+
+  @@map("closed_timesheet_weeks")
 }

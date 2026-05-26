@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { assertWeekStartOpen } from "@/lib/timesheet-week-close";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -9,6 +10,11 @@ export async function POST(request: NextRequest) {
   const { weekStart, contractorId } = await request.json();
   if (!weekStart || !contractorId) {
     return NextResponse.json({ error: "weekStart and contractorId required" }, { status: 400 });
+  }
+
+  const weekCheck = await assertWeekStartOpen(weekStart);
+  if (!weekCheck.ok) {
+    return NextResponse.json({ error: weekCheck.error }, { status: 400 });
   }
 
   // Contractors can only submit for themselves

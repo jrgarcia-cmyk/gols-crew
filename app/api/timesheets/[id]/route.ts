@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isContractorEditableStatus } from "@/lib/timesheet-edit";
+import { assertTimesheetWeekOpen } from "@/lib/timesheet-week-close";
 import { computeTimesheetPayForContractor } from "@/lib/timesheet-calc-server";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -87,6 +88,11 @@ export async function PATCH(
     );
   }
 
+  const weekCheck = await assertTimesheetWeekOpen(existing.entryDate ?? existing.createdAt);
+  if (!weekCheck.ok) {
+    return NextResponse.json({ error: weekCheck.error }, { status: 400 });
+  }
+
   const body = await request.json();
   const {
     entryDate,
@@ -137,6 +143,11 @@ export async function PATCH(
     : start
     ? new Date(start)
     : existing.entryDate;
+
+  const weekCheckForNewDate = await assertTimesheetWeekOpen(resolvedEntryDate ?? existing.createdAt);
+  if (!weekCheckForNewDate.ok) {
+    return NextResponse.json({ error: weekCheckForNewDate.error }, { status: 400 });
+  }
 
   const updated = await db.timesheet.update({
     where: { id },

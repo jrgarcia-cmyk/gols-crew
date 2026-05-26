@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getRequireShiftApproval } from "@/lib/app-settings";
 import { formatDate } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { TimesheetActions } from "@/app/admin/timesheets/timesheet-actions";
 
 export default async function ManagerTimesheetsPage() {
   await requireRole("MANAGER", "ADMIN", "SUPER_ADMIN");
+  const requireShiftApproval = await getRequireShiftApproval();
 
   const timesheets = await db.timesheet.findMany({
     where: { status: "SUBMITTED" },
@@ -47,7 +49,11 @@ export default async function ManagerTimesheetsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge variant={statusBadge(ts.status)}>{ts.status}</Badge>
-                  <TimesheetActions timesheetId={ts.id} />
+                  {requireShiftApproval ? (
+                    <TimesheetActions timesheetId={ts.id} />
+                  ) : (
+                    <span className="text-xs text-gray-400">Week approval only</span>
+                  )}
                 </div>
               </div>
             ))}

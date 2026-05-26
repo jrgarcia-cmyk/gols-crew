@@ -23,9 +23,12 @@ import {
 } from "@/lib/timesheet-pay";
 import { contractorRateSelect } from "@/lib/timesheet-calc";
 import { isPerGamePayType } from "@/lib/pay-type";
+import { getRequireShiftApproval } from "@/lib/app-settings";
+import { isWeekClosed } from "@/lib/timesheet-week-close";
 import Link from "next/link";
 import { WeekActions } from "./week-actions";
 import { TimesheetActions } from "../timesheet-actions";
+import { CloseWeekButton } from "../close-week-button";
 
 function formatTime(dt: Date | null) {
   if (!dt) return "—";
@@ -60,7 +63,7 @@ export default async function AdminTimesheetWeekPage({
 
   if (!contractor) notFound();
 
-  const [entries, contractorRates] = await Promise.all([
+  const [entries, contractorRates, requireShiftApproval, weekIsClosed] = await Promise.all([
     db.timesheet.findMany({
       where: {
         contractorId,
@@ -89,6 +92,8 @@ export default async function AdminTimesheetWeekPage({
       where: { contractorId, active: true },
       select: contractorRateSelect,
     }),
+    getRequireShiftApproval(),
+    isWeekClosed(weekStart),
   ]);
 
   const payCtx: TimesheetPayContext = { contractorRates };
@@ -167,8 +172,24 @@ export default async function AdminTimesheetWeekPage({
 
       <MissingRateAlert issues={uniqueSubmittedIssues} />
 
+      {weekIsClosed && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Week closed for payroll</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  No edits or approvals are allowed until this week is reopened.
+                </p>
+              </div>
+              <CloseWeekButton weekStart={weekStart} isClosed={weekIsClosed} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Bulk actions */}
-      {hasSubmitted && !allApproved && !allRejected && (
+      {!weekIsClosed && hasSubmitted && !allApproved && !allRejected && (
         <Card>
           <CardContent className="py-4">
             <div className="flex items-center justify-between gap-4">
@@ -191,7 +212,7 @@ export default async function AdminTimesheetWeekPage({
       )}
 
       {/* Reopen whole week */}
-      {(allApproved || allRejected) && (
+      {!weekIsClosed && (allApproved || allRejected) && (
         <Card>
           <CardContent className="py-4">
             <div className="flex items-center justify-between gap-4">
@@ -306,13 +327,25 @@ export default async function AdminTimesheetWeekPage({
                 </div>
 
                 {/* Per-entry actions */}
-                {(entry.status === "SUBMITTED" || entry.status === "APPROVED" || entry.status === "REJECTED") && (
+                {!weekIsClosed && requireShiftApproval &&
+                  (entry.status === "SUBMITTED" || entry.status === "APPROVED" || entry.status === "REJECTED") && (
                   <div className="flex items-center gap-3 pt-1">
                     <TimesheetActions
                       timesheetId={entry.id}
                       status={entry.status}
                       canApprove={!missingRate}
                     />
+                    <Link
+                      href={`/admin/timesheets/${entry.id}`}
+                      className="text-xs text-gray-400 hover:text-gray-700"
+                    >
+                      View details →
+                    </Link>
+                  </div>
+                )}
+                {!weekIsClosed && !requireShiftApproval &&
+                  (entry.status === "SUBMITTED" || entry.status === "APPROVED" || entry.status === "REJECTED") && (
+                  <div className="flex items-center gap-3 pt-1">
                     <Link
                       href={`/admin/timesheets/${entry.id}`}
                       className="text-xs text-gray-400 hover:text-gray-700"

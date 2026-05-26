@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import { getWeekMissingRateIssues } from "@/lib/timesheet-approval";
+import { assertWeekStartOpen } from "@/lib/timesheet-week-close";
 import { NextResponse, type NextRequest } from "next/server";
 
 type BulkAction = "APPROVED" | "REJECTED" | "PAID" | "SUBMITTED";
@@ -26,6 +27,13 @@ export async function POST(request: NextRequest) {
   }
   if (!["APPROVED", "REJECTED", "PAID", "SUBMITTED"].includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+
+  for (const { weekStart } of pairs) {
+    const weekCheck = await assertWeekStartOpen(weekStart);
+    if (!weekCheck.ok) {
+      return NextResponse.json({ error: weekCheck.error }, { status: 400 });
+    }
   }
 
   if (action === "APPROVED" || action === "PAID") {
