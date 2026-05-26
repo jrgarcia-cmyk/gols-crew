@@ -7,7 +7,9 @@ import {
   formatWeekSummary,
   getTimesheetEntryTotal,
   getTimesheetPayType,
+  type TimesheetPayContext,
 } from "@/lib/timesheet-pay";
+import { contractorRateSelect } from "@/lib/timesheet-calc";
 import { isPerGamePayType, PAY_TYPE_LABELS } from "@/lib/pay-type";
 import { getWeekStart, shiftDate } from "@/lib/week";
 import { getWeekStartDay } from "@/lib/week-server";
@@ -50,6 +52,7 @@ async function fetchTimesheets(contractorId: string) {
           payTypeSnapshot: true,
           rateAmountSnapshot: true,
           rateLabelSnapshot: true,
+          role: true,
         },
       },
       jobCategory: { select: { name: true, color: true } },
@@ -64,10 +67,17 @@ export default async function ContractorTimesheetsPage() {
   const user = await requireRole("CONTRACTOR");
   const contractor = await resolveContractorForUser(user);
 
-  const [entries, weekStartDay] = await Promise.all([
+  const [entries, weekStartDay, contractorRates] = await Promise.all([
     contractor ? fetchTimesheets(contractor.id) : Promise.resolve([]),
     getWeekStartDay(),
+    contractor
+      ? db.contractorRate.findMany({
+          where: { contractorId: contractor.id, active: true },
+          select: contractorRateSelect,
+        })
+      : Promise.resolve([]),
   ]);
+  const payCtx: TimesheetPayContext = { contractorRates };
   const weeks = groupByWeek(entries, weekStartDay);
 
   return (
@@ -127,7 +137,7 @@ export default async function ContractorTimesheetsPage() {
                       {formatDateShort(weekStart)} – {formatDateShort(weekEndStr)}
                     </p>
                     <span className="text-xs font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
-                      {formatWeekSummary(group)}
+                      {formatWeekSummary(group, payCtx)}
                     </span>
                   </div>
 
@@ -157,9 +167,9 @@ export default async function ContractorTimesheetsPage() {
                   {group.map((entry) => {
                     const payType = getTimesheetPayType(entry);
                     const perGame = isPerGamePayType(payType);
-                    const quantity = formatTimesheetQuantity(entry);
-                    const rate = formatTimesheetRate(entry);
-                    const entryTotal = getTimesheetEntryTotal(entry);
+                    const quantity = formatTimesheetQuantity(entry, payCtx);
+                    const rate = formatTimesheetRate(entry, payCtx);
+                    const entryTotal = getTimesheetEntryTotal(entry, payCtx);
 
                     return (
                       <Card key={entry.id} className={entry.status === "DRAFT" ? "border-dashed border-gray-300" : ""}>
@@ -215,13 +225,15 @@ export default async function ContractorTimesheetsPage() {
                             </div>
 
                             <div className="flex flex-col items-end gap-1 shrink-0">
-                              {entryTotal != null && (
+                              {quantity && (
                                 <span className="text-sm font-bold text-gray-900">
-                                  {formatCurrency(entryTotal)}
+                                  {quantity}
                                 </span>
                               )}
-                              {quantity && entryTotal == null && (
-                                <span className="text-sm font-bold text-gray-900">{quantity}</span>
+                              {entryTotal != null && (
+                                <span className="text-sm font-semibold text-gray-600">
+                                  {formatCurrency(entryTotal)}
+                                </span>
                               )}
                               <Badge variant={statusBadge(entry.status)}>{entry.status}</Badge>
                             </div>

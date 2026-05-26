@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isContractorEditableStatus } from "@/lib/timesheet-edit";
+import { computeTimesheetPayForContractor } from "@/lib/timesheet-calc-server";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function GET(
@@ -44,8 +45,20 @@ export async function PATCH(
 
   const { id } = await params;
 
-  // Fetch the existing entry
-  const existing = await db.timesheet.findUnique({ where: { id } });
+  // Fetch the existing entry with relations needed for pay calc
+  const existing = await db.timesheet.findUnique({
+    where: { id },
+    include: {
+      assignment: {
+        select: {
+          payTypeSnapshot: true,
+          rateAmountSnapshot: true,
+          role: true,
+        },
+      },
+      event: { select: { payType: true } },
+    },
+  });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Contractors can only edit their own entries
@@ -90,40 +103,32 @@ export async function PATCH(
   const start = startTime ? new Date(startTime) : null;
   const end = endTime ? new Date(endTime) : null;
 
-  let totalHours: number | null = existing.totalHours ? Number(existing.totalHours) : null;
   let parsedGames =
     gamesCount !== undefined && gamesCount !== null
       ? parseInt(String(gamesCount), 10)
       : existing.gamesCount;
-  let calculatedPay: number | null = existing.calculatedPay
-    ? Number(existing.calculatedPay)
-    : null;
 
-  if (parsedGames && parsedGames > 0) {
-    totalHours = null;
-    if (existing.assignmentId) {
-      const assignment = await db.eventAssignment.findUnique({
-        where: { id: existing.assignmentId },
-        select: { rateAmountSnapshot: true },
-      });
-      if (assignment?.rateAmountSnapshot) {
-        calculatedPay = parsedGames * Number(assignment.rateAmountSnapshot);
-      }
-    }
-  } else if (start && end) {
-    const diffMs = end.getTime() - start.getTime();
-    totalHours = Math.max(0, diffMs / (1000 * 60 * 60) - (breakMinutes ?? 0) / 60);
-    parsedGames = null;
-    if (existing.assignmentId && totalHours > 0) {
-      const assignment = await db.eventAssignment.findUnique({
-        where: { id: existing.assignmentId },
-        select: { rateAmountSnapshot: true, payTypeSnapshot: true },
-      });
-      if (assignment?.rateAmountSnapshot && assignment.payTypeSnapshot === "HOURLY") {
-        calculatedPay = totalHours * Number(assignment.rateAmountSnapshot);
-      }
-    }
-  }
+  const resolvedStart =
+    parsedGames && parsedGames > 0 ? null : (start ?? existing.startTime);
+  const resolvedEnd =
+    parsedGames && parsedGames > 0 ? null : (end ?? existing.endTime);
+  const resolvedBreak = breakMinutes ?? existing.breakMinutes;
+  const resolvedGames =
+    parsedGames && parsedGames > 0 ? parsedGames : null;
+
+  const { totalHours, calculatedPay } = await computeTimesheetPayForContractor(
+    {
+      startTime: resolvedStart,
+      endTime: resolvedEnd,
+      breakMinutes: resolvedBreak,
+      gamesCount: resolvedGames,
+      totalHours: null,
+      calculatedPay: null,
+      assignment: existing.assignment,
+      event: existing.event,
+    },
+    existing.contractorId
+  );
 
   const newStatus = existing.status === "REJECTED" ? "DRAFT" : existing.status;
   const keepSubmitted = existing.status === "SUBMITTED";
@@ -137,11 +142,11 @@ export async function PATCH(
     where: { id },
     data: {
       entryDate: resolvedEntryDate,
-      startTime: parsedGames && parsedGames > 0 ? null : start,
-      endTime: parsedGames && parsedGames > 0 ? null : end,
-      breakMinutes: breakMinutes ?? existing.breakMinutes,
-      gamesCount: parsedGames && parsedGames > 0 ? parsedGames : null,
-      totalHours: parsedGames && parsedGames > 0 ? null : totalHours,
+      startTime: resolvedStart,
+      endTime: resolvedEnd,
+      breakMinutes: resolvedBreak,
+      gamesCount: resolvedGames,
+      totalHours,
       calculatedPay,
       jobCategoryId: jobCategoryId || null,
       jobSubItemId: jobSubItemId || null,

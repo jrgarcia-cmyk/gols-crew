@@ -1,20 +1,12 @@
 import type { PayType } from "@/app/generated/prisma";
 import { PAY_TYPE_LABELS, isPerGamePayType } from "@/lib/pay-type";
-import { pickContractorRate } from "@/lib/rates";
 import {
-  getTimesheetPayType,
-  getTimesheetRateAmount,
-  type TimesheetPayEntry,
-} from "@/lib/timesheet-pay";
+  resolveTimesheetRateAmount,
+  type ContractorRateLookup,
+} from "@/lib/timesheet-calc";
+import { getTimesheetPayType, type TimesheetPayEntry } from "@/lib/timesheet-pay";
 
-export type ContractorRateLookup = {
-  id: string;
-  label: string;
-  role: string | null;
-  payType: PayType;
-  rateAmount: { toString(): string } | number;
-  isDefault: boolean;
-};
+export type { ContractorRateLookup };
 
 export type TimesheetRateCheckEntry = TimesheetPayEntry & {
   assignment?: {
@@ -36,12 +28,7 @@ export function getResolvedRateAmount(
   entry: TimesheetRateCheckEntry,
   contractorRates: ContractorRateLookup[]
 ): number | null {
-  const snapshot = getTimesheetRateAmount(entry);
-  if (snapshot != null) return snapshot;
-
-  const payType = getTimesheetPayType(entry);
-  const rate = pickContractorRate(contractorRates, payType, entry.assignment?.role ?? null);
-  return rate ? Number(rate.rateAmount) : null;
+  return resolveTimesheetRateAmount(entry, contractorRates);
 }
 
 export function getMissingRateIssue(

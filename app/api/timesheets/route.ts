@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import type { PayType } from "@/app/generated/prisma";
+import { computeTimesheetPayForContractor } from "@/lib/timesheet-calc-server";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -37,35 +39,48 @@ export async function POST(request: NextRequest) {
 
   const start = startTime ? new Date(startTime) : null;
   const end = endTime ? new Date(endTime) : null;
-
-  let totalHours: number | null = null;
-  let calculatedPay: number | null = null;
   const parsedGames =
     gamesCount !== undefined && gamesCount !== null ? parseInt(String(gamesCount), 10) : null;
 
-  if (parsedGames && parsedGames > 0) {
-    if (assignmentId) {
-      const assignment = await db.eventAssignment.findUnique({
-        where: { id: assignmentId },
-        select: { rateAmountSnapshot: true },
-      });
-      if (assignment?.rateAmountSnapshot) {
-        calculatedPay = parsedGames * Number(assignment.rateAmountSnapshot);
-      }
-    }
-  } else if (start && end) {
-    const diffMs = end.getTime() - start.getTime();
-    totalHours = Math.max(0, diffMs / (1000 * 60 * 60) - (breakMinutes ?? 0) / 60);
-    if (assignmentId && totalHours > 0) {
-      const assignment = await db.eventAssignment.findUnique({
-        where: { id: assignmentId },
-        select: { rateAmountSnapshot: true, payTypeSnapshot: true },
-      });
-      if (assignment?.rateAmountSnapshot && assignment.payTypeSnapshot === "HOURLY") {
-        calculatedPay = totalHours * Number(assignment.rateAmountSnapshot);
-      }
-    }
+  let assignmentMeta: {
+    payTypeSnapshot: PayType | null;
+    rateAmountSnapshot: { toString(): string } | number | null;
+    role: string | null;
+  } | null = null;
+
+  if (assignmentId) {
+    assignmentMeta = await db.eventAssignment.findUnique({
+      where: { id: assignmentId },
+      select: {
+        payTypeSnapshot: true,
+        rateAmountSnapshot: true,
+        role: true,
+      },
+    });
   }
+
+  let eventPayType: PayType | undefined;
+  if (eventId) {
+    const event = await db.event.findUnique({
+      where: { id: eventId },
+      select: { payType: true },
+    });
+    eventPayType = event?.payType;
+  }
+
+  const { totalHours, calculatedPay } = await computeTimesheetPayForContractor(
+    {
+      startTime: start,
+      endTime: end,
+      breakMinutes: breakMinutes ?? 0,
+      gamesCount: parsedGames && parsedGames > 0 ? parsedGames : null,
+      totalHours: null,
+      calculatedPay: null,
+      assignment: assignmentMeta,
+      event: eventPayType ? { payType: eventPayType } : null,
+    },
+    contractorId
+  );
 
   const timesheet = await db.timesheet.create({
     data: {
@@ -75,12 +90,12 @@ export async function POST(request: NextRequest) {
       entryDate: entryDate ? new Date(entryDate) : (start ?? new Date()),
       jobCategoryId: jobCategoryId || null,
       jobSubItemId: jobSubItemId || null,
-      startTime: start,
-      endTime: end,
+      startTime: parsedGames && parsedGames > 0 ? null : start,
+      endTime: parsedGames && parsedGames > 0 ? null : end,
       breakMinutes: breakMinutes ?? 0,
       gamesCount: parsedGames && parsedGames > 0 ? parsedGames : null,
-      totalHours: totalHours !== null ? totalHours : null,
-      calculatedPay: calculatedPay !== null ? calculatedPay : null,
+      totalHours,
+      calculatedPay,
       status: "DRAFT",
       notes: notes ?? null,
     },
