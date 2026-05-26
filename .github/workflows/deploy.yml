@@ -43,7 +43,7 @@ jobs:
         run: npx prisma generate
 
       - name: Sync database schema
-        run: npx prisma db push --skip-generate
+        run: npx prisma db push
 
       - name: Build
         run: npm run build
