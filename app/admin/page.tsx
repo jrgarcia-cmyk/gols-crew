@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+const VISIBLE_EVENT_STATUSES = ["CONFIRMED", "COMPLETED"] as const;
+
 export default async function AdminDashboardPage() {
   await requireRole("ADMIN", "SUPER_ADMIN");
 
@@ -20,12 +22,18 @@ export default async function AdminDashboardPage() {
     db.contractor.count(),
     db.contractor.count({ where: { status: "ACTIVE" } }),
     db.event.count({
-      where: { startDatetime: { gte: new Date() }, status: { in: ["CONFIRMED", "IN_PROGRESS"] } },
+      where: {
+        startDatetime: { gte: new Date() },
+        status: { in: [...VISIBLE_EVENT_STATUSES] as never[] },
+      },
     }),
     db.timesheet.count({ where: { status: "SUBMITTED" } }),
     db.reimbursement.count({ where: { status: "SUBMITTED" } }),
     db.event.findMany({
-      where: { startDatetime: { gte: new Date() } },
+      where: {
+        startDatetime: { gte: new Date() },
+        status: { in: [...VISIBLE_EVENT_STATUSES] as never[] },
+      },
       include: { _count: { select: { assignments: true } } },
       orderBy: { startDatetime: "asc" },
       take: 5,

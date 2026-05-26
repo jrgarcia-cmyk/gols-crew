@@ -19,6 +19,14 @@ type EventView = (typeof EVENT_VIEWS)[number]["value"];
 type EventSort = (typeof SORTS)[number];
 type SortDir = "asc" | "desc";
 
+const SORT_LABELS: Record<EventSort, string> = {
+  name: "Event",
+  date: "Date",
+  venue: "Venue",
+  crew: "Crew",
+  status: "Status",
+};
+
 function isEventView(value: string | undefined): value is EventView {
   return EVENT_VIEWS.some((view) => view.value === value);
 }
@@ -69,12 +77,13 @@ function SortHeader({
     <th className="px-6 py-3">
       <Link
         href={buildEventsUrl({ q: search, view, sort: column, dir: nextDir })}
-        className={`inline-flex items-center gap-1 text-xs font-semibold uppercase transition-colors ${
-          active ? "text-gray-900" : "text-gray-500 hover:text-gray-700"
+        title={`Sort by ${label}`}
+        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold uppercase transition-colors ${
+          active ? "bg-gray-100 text-gray-950" : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
         }`}
       >
         {label}
-        <span className="text-[10px]">{active ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
+        <span className="text-[11px]">{active ? (dir === "asc" ? "↑" : "↓") : "↕"}</span>
       </Link>
     </th>
   );
@@ -177,6 +186,38 @@ export default async function AdminEventsPage({
               }`}
             >
               {item.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3 md:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-semibold uppercase text-gray-500">Sort</span>
+          <Link
+            href={buildEventsUrl({
+              q: search,
+              view,
+              sort,
+              dir: dir === "asc" ? "desc" : "asc",
+            })}
+            className="rounded-md border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700"
+          >
+            {dir === "asc" ? "Oldest first ↑" : "Newest first ↓"}
+          </Link>
+        </div>
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          {SORTS.map((item) => (
+            <Link
+              key={item}
+              href={buildEventsUrl({ q: search, view, sort: item, dir })}
+              className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                sort === item
+                  ? "bg-gray-900 text-white"
+                  : "border border-gray-200 text-gray-600"
+              }`}
+            >
+              {SORT_LABELS[item]}
             </Link>
           ))}
         </div>
