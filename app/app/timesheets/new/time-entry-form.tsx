@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { DayPicker } from "./day-picker";
 
@@ -55,10 +55,7 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
   const [breakMinutes, setBreakMinutes] = useState(String(initialValues?.breakMinutes ?? 0));
   const [jobCategoryId, setJobCategoryId] = useState(initialValues?.jobCategoryId ?? "");
   const [jobSubItemId, setJobSubItemId] = useState(initialValues?.jobSubItemId ?? "");
-  // null = not chosen yet (new entry only), "" = no event, otherwise event id
-  const [eventId, setEventId] = useState<string | null>(
-    isEditing ? (initialValues?.eventId ?? "") : null
-  );
+  const [eventId, setEventId] = useState(initialValues?.eventId ?? "");
   const [notes, setNotes] = useState(initialValues?.notes ?? "");
 
   const selectedCategory = categories.find((c) => c.id === jobCategoryId);
@@ -125,72 +122,24 @@ export function TimeEntryForm({ contractorId, categories, events, timesheetId, i
       />
 
       {/* Event picker */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">
-          Event
-          <span className="text-gray-400 font-normal ml-1">(optional)</span>
-        </label>
-
-        {events.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">No active events available.</p>
-        ) : (
-          <div className="space-y-2">
-            {/* "No event" option */}
-            <button
-              type="button"
-              onClick={() => setEventId("")}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-left transition-colors ${
-                eventId === ""
-                  ? "border-gray-400 bg-gray-100"
-                  : "border-gray-200 hover:border-gray-300 bg-white"
-              }`}
-            >
-              <span className="h-2.5 w-2.5 rounded-full shrink-0 bg-gray-300" />
-              <span className={`text-sm font-medium ${eventId === "" ? "text-gray-900" : "text-gray-500"}`}>
-                Not tied to an event
-              </span>
-            </button>
-
-            {/* Event cards */}
-            {events.map((ev) => {
-              const isPast = new Date(ev.startDatetime) < new Date();
-              return (
-                <button
-                  key={ev.id}
-                  type="button"
-                  onClick={() => setEventId(ev.id)}
-                  className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${
-                    eventId === ev.id
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-200 hover:border-gray-300 bg-white"
-                  }`}
-                >
-                  <span className="mt-0.5 h-2.5 w-2.5 rounded-full shrink-0 bg-red-400" />
-                  <span className="flex-1 min-w-0">
-                    <span className={`block text-sm font-medium leading-tight ${eventId === ev.id ? "text-red-700" : "text-gray-800"}`}>
-                      {ev.name}
-                    </span>
-                    <span className="block text-xs text-gray-400 mt-0.5">
-                      {formatEventDate(ev.startDatetime)}
-                      {ev.role ? <> · {ev.role}</> : <> · not assigned</>}
-                      {isPast && <span className="ml-1 text-gray-300">(past)</span>}
-                    </span>
-                  </span>
-                  {eventId === ev.id && (
-                    <svg className="h-4 w-4 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {eventId === null && events.length > 0 && (
-          <p className="text-xs text-amber-600">Select an event above, or choose &ldquo;Not tied to an event.&rdquo;</p>
-        )}
-      </div>
+      {events.length === 0 ? (
+        <p className="text-sm text-gray-400 italic">No active events available.</p>
+      ) : (
+        <Select
+          label="Event (optional)"
+          value={eventId}
+          onChange={(e) => setEventId(e.target.value)}
+          options={[
+            { value: "", label: "Not tied to an event" },
+            ...events.map((ev) => ({
+              value: ev.id,
+              label: `${ev.name} — ${formatEventDate(ev.startDatetime)}${
+                ev.role ? ` · ${ev.role}` : " · not assigned"
+              }`,
+            })),
+          ]}
+        />
+      )}
 
       {/* Job category */}
       <div className="space-y-2">

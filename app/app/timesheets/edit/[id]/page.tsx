@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { sortEventsMostCurrentFirst } from "@/lib/events";
 import { notFound, redirect } from "next/navigation";
 import { TimeEntryForm, type InitialValues } from "@/app/app/timesheets/new/time-entry-form";
 import { GameEntryEditForm } from "../game-entry-form";
@@ -147,7 +148,7 @@ export default async function EditTimesheetPage({
         <TimeEntryForm
           contractorId={contractor.id}
           categories={categories!}
-          events={events!.map((event) => ({
+          events={sortEventsMostCurrentFirst(events!).map((event) => ({
             id: event.id,
             name: event.name,
             startDatetime: event.startDatetime,

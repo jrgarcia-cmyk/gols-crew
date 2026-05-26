@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { sortEventsMostCurrentFirst } from "@/lib/events";
 import { TimeEntryForm } from "./time-entry-form";
 
 export default async function NewTimesheetPage() {
@@ -61,7 +62,7 @@ export default async function NewTimesheetPage() {
         <TimeEntryForm
           contractorId={contractor.id}
           categories={categories}
-          events={events.map((event) => ({
+          events={sortEventsMostCurrentFirst(events).map((event) => ({
             id: event.id,
             name: event.name,
             startDatetime: event.startDatetime,
