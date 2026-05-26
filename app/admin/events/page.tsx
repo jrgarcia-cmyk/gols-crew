@@ -7,25 +7,122 @@ import { EmptyState } from "@/components/ui/empty-state";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
+const VISIBLE_EVENT_STATUSES = ["CONFIRMED", "COMPLETED"] as const;
+const EVENT_VIEWS = [
+  { value: "upcoming", label: "Upcoming" },
+  { value: "past", label: "Recent Past" },
+  { value: "archive", label: "Archive" },
+] as const;
+const SORTS = ["name", "date", "venue", "crew", "status"] as const;
+
+type EventView = (typeof EVENT_VIEWS)[number]["value"];
+type EventSort = (typeof SORTS)[number];
+type SortDir = "asc" | "desc";
+
+function isEventView(value: string | undefined): value is EventView {
+  return EVENT_VIEWS.some((view) => view.value === value);
+}
+
+function isEventSort(value: string | undefined): value is EventSort {
+  return SORTS.includes(value as EventSort);
+}
+
+function buildEventsUrl({
+  q,
+  view,
+  sort,
+  dir,
+}: {
+  q: string;
+  view: EventView;
+  sort: EventSort;
+  dir: SortDir;
+}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (view !== "upcoming") params.set("view", view);
+  if (sort !== "date") params.set("sort", sort);
+  if (dir !== "asc") params.set("dir", dir);
+  const qs = params.toString();
+  return `/admin/events${qs ? `?${qs}` : ""}`;
+}
+
+function SortHeader({
+  label,
+  column,
+  search,
+  view,
+  sort,
+  dir,
+}: {
+  label: string;
+  column: EventSort;
+  search: string;
+  view: EventView;
+  sort: EventSort;
+  dir: SortDir;
+}) {
+  const active = sort === column;
+  const nextDir: SortDir = active && dir === "asc" ? "desc" : "asc";
+
+  return (
+    <th className="px-6 py-3">
+      <Link
+        href={buildEventsUrl({ q: search, view, sort: column, dir: nextDir })}
+        className={`inline-flex items-center gap-1 text-xs font-semibold uppercase transition-colors ${
+          active ? "text-gray-900" : "text-gray-500 hover:text-gray-700"
+        }`}
+      >
+        {label}
+        <span className="text-[10px]">{active ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
+      </Link>
+    </th>
+  );
+}
+
 export default async function AdminEventsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string }>;
+  searchParams: Promise<{ q?: string; view?: string; sort?: string; dir?: string }>;
 }) {
   await requireRole("ADMIN", "SUPER_ADMIN");
   const sp = await searchParams;
-  const statusFilter = sp.status ?? "";
   const search = sp.q ?? "";
+  const view: EventView = isEventView(sp.view) ? sp.view : "upcoming";
+  const sort: EventSort = isEventSort(sp.sort) ? sp.sort : "date";
+  const dir: SortDir = sp.dir === "asc" || sp.dir === "desc"
+    ? sp.dir
+    : view === "upcoming" ? "asc" : "desc";
+  const now = new Date();
+  const archiveCutoff = new Date(now);
+  archiveCutoff.setDate(archiveCutoff.getDate() - 21);
+
+  const dateFilter =
+    view === "upcoming"
+      ? { gte: now }
+      : view === "past"
+        ? { lt: now, gte: archiveCutoff }
+        : { lt: archiveCutoff };
 
   const events = await db.event.findMany({
     where: {
       AND: [
-        statusFilter ? { status: statusFilter as never } : {},
+        { status: { in: [...VISIBLE_EVENT_STATUSES] as never[] } },
+        { startDatetime: dateFilter },
         search ? { name: { contains: search, mode: "insensitive" } } : {},
       ],
     },
     include: { _count: { select: { assignments: true } } },
-    orderBy: { startDatetime: "desc" },
+  });
+
+  const sortedEvents = [...events].sort((a, b) => {
+    let value = 0;
+    if (sort === "name") value = a.name.localeCompare(b.name);
+    if (sort === "date") value = a.startDatetime.getTime() - b.startDatetime.getTime();
+    if (sort === "venue") value = (a.venueName ?? "").localeCompare(b.venueName ?? "");
+    if (sort === "crew") value = a._count.assignments - b._count.assignments;
+    if (sort === "status") value = a.status.localeCompare(b.status);
+    return dir === "asc" ? value : -value;
   });
 
   return (
@@ -33,7 +130,9 @@ export default async function AdminEventsPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">Events</h1>
-          <p className="text-gray-500 text-sm mt-1">{events.length} total</p>
+          <p className="text-gray-500 text-sm mt-1">
+            {sortedEvents.length} {view === "archive" ? "archived" : view === "past" ? "recent past" : "upcoming"} events
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex">
           <Link href="/admin/airtable-sync" className="min-w-0">
@@ -48,6 +147,9 @@ export default async function AdminEventsPage({
       {/* Filters */}
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
         <form className="flex w-full gap-2 lg:min-w-64 lg:flex-1">
+          {view !== "upcoming" && <input type="hidden" name="view" value={view} />}
+          {sort !== "date" && <input type="hidden" name="sort" value={sort} />}
+          {dir !== "asc" && <input type="hidden" name="dir" value={dir} />}
           <input
             name="q"
             defaultValue={search}
@@ -59,26 +161,31 @@ export default async function AdminEventsPage({
           </button>
         </form>
         <div className="flex gap-1 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible lg:pb-0">
-          {["", "DRAFT", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"].map((s) => (
+          {EVENT_VIEWS.map((item) => (
             <Link
-              key={s}
-              href={`/admin/events${s ? `?status=${s}` : ""}`}
+              key={item.value}
+              href={buildEventsUrl({
+                q: search,
+                view: item.value,
+                sort,
+                dir: sort === "date" ? (item.value === "upcoming" ? "asc" : "desc") : dir,
+              })}
               className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                statusFilter === s
+                view === item.value
                   ? "bg-gray-900 text-white"
                   : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
               }`}
             >
-              {s || "All"}
+              {item.label}
             </Link>
           ))}
         </div>
       </div>
 
-      {events.length === 0 ? (
+      {sortedEvents.length === 0 ? (
         <EmptyState
           title="No events found"
-          description="Create an event or sync from Airtable."
+          description="Confirmed and completed events matching this view will show here."
           action={
             <div className="flex gap-2">
               <Link href="/admin/airtable-sync"><Button variant="outline" size="sm">Sync Airtable</Button></Link>
@@ -89,7 +196,7 @@ export default async function AdminEventsPage({
       ) : (
         <Card>
           <div className="divide-y divide-gray-100 md:hidden">
-            {events.map((event) => (
+            {sortedEvents.map((event) => (
               <Link
                 key={event.id}
                 href={`/admin/events/${event.id}`}
@@ -124,16 +231,16 @@ export default async function AdminEventsPage({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 text-left">
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Event</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Venue</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Crew</th>
-                  <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  <SortHeader label="Event" column="name" search={search} view={view} sort={sort} dir={dir} />
+                  <SortHeader label="Date" column="date" search={search} view={view} sort={sort} dir={dir} />
+                  <SortHeader label="Venue" column="venue" search={search} view={view} sort={sort} dir={dir} />
+                  <SortHeader label="Crew" column="crew" search={search} view={view} sort={sort} dir={dir} />
+                  <SortHeader label="Status" column="status" search={search} view={view} sort={sort} dir={dir} />
                   <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {events.map((event) => (
+                {sortedEvents.map((event) => (
                   <tr key={event.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <p className="font-medium text-gray-900">{event.name}</p>
