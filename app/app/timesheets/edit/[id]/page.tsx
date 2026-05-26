@@ -1,8 +1,11 @@
 import { requireRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sortEventsMostCurrentFirst } from "@/lib/events";
+import { isContractorEditableStatus, toDatetimeLocalValue } from "@/lib/timesheet-edit";
+import { isPerGamePayType } from "@/lib/pay-type";
 import { notFound, redirect } from "next/navigation";
 import { TimeEntryForm, type InitialValues } from "@/app/app/timesheets/new/time-entry-form";
+import { AssignmentEntryEditForm } from "../assignment-entry-edit-form";
 import { GameEntryEditForm } from "../game-entry-form";
 import Link from "next/link";
 
@@ -48,30 +51,79 @@ export default async function EditTimesheetPage({
       jobCategoryId: true,
       jobSubItemId: true,
       eventId: true,
+      assignmentId: true,
       notes: true,
       assignment: {
         select: {
           payTypeSnapshot: true,
           rateAmountSnapshot: true,
+          event: { select: { name: true, payType: true } },
         },
       },
       event: {
-        select: { payType: true },
+        select: { name: true, payType: true },
       },
     },
   });
 
   if (!entry || entry.contractorId !== contractor.id) notFound();
 
-  // Only DRAFT and REJECTED entries are editable
-  if (!["DRAFT", "REJECTED"].includes(entry.status)) {
+  if (!isContractorEditableStatus(entry.status)) {
     redirect("/app/timesheets");
   }
 
+  const payType =
+    entry.assignment?.payTypeSnapshot ??
+    entry.event?.payType ??
+    "HOURLY";
   const isGameEntry =
-    (entry.gamesCount ?? 0) > 0 ||
-    entry.assignment?.payTypeSnapshot === "PER_GAME" ||
-    entry.event?.payType === "PER_GAME";
+    (entry.gamesCount ?? 0) > 0 || isPerGamePayType(payType);
+  const eventName =
+    entry.assignment?.event.name ?? entry.event?.name ?? "Event shift";
+  const rateAmount = entry.assignment?.rateAmountSnapshot
+    ? Number(entry.assignment.rateAmountSnapshot)
+    : null;
+
+  if (entry.assignmentId && entry.assignment) {
+    return (
+      <div className="px-4 py-6 space-y-5">
+        <div className="flex items-center gap-3">
+          <Link href="/app/timesheets" className="text-gray-400 hover:text-gray-600">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">
+              {isGameEntry ? "Edit Games" : "Edit Shift"}
+            </h1>
+            {entry.status === "REJECTED" && (
+              <p className="text-xs text-red-600 mt-0.5">
+                This entry was rejected — fix and re-submit.
+              </p>
+            )}
+            {entry.status === "SUBMITTED" && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                You can update this shift until it&apos;s approved.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <AssignmentEntryEditForm
+          timesheetId={entry.id}
+          eventName={eventName}
+          payType={payType}
+          rateAmount={rateAmount}
+          initialStartTime={toDatetimeLocalValue(entry.startTime)}
+          initialEndTime={toDatetimeLocalValue(entry.endTime)}
+          initialBreakMinutes={entry.breakMinutes ?? 0}
+          initialGamesCount={entry.gamesCount ?? 1}
+          initialNotes={entry.notes ?? ""}
+        />
+      </div>
+    );
+  }
 
   const [categories, events] = isGameEntry
     ? [null, null]
@@ -130,6 +182,11 @@ export default async function EditTimesheetPage({
               This entry was rejected — fix and re-submit.
             </p>
           )}
+          {entry.status === "SUBMITTED" && (
+            <p className="text-xs text-gray-500 mt-0.5">
+              You can update this entry until it&apos;s approved.
+            </p>
+          )}
         </div>
       </div>
 
@@ -138,11 +195,7 @@ export default async function EditTimesheetPage({
           timesheetId={entry.id}
           initialGamesCount={entry.gamesCount ?? 1}
           initialNotes={entry.notes ?? ""}
-          rateAmount={
-            entry.assignment?.rateAmountSnapshot
-              ? Number(entry.assignment.rateAmountSnapshot)
-              : null
-          }
+          rateAmount={rateAmount}
         />
       ) : (
         <TimeEntryForm

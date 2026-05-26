@@ -1,8 +1,7 @@
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { isContractorEditableStatus } from "@/lib/timesheet-edit";
 import { NextResponse, type NextRequest } from "next/server";
-
-const EDITABLE_STATUSES = ["DRAFT", "REJECTED"];
 
 export async function GET(
   _request: NextRequest,
@@ -59,8 +58,16 @@ export async function PATCH(
     }
   }
 
-  // Only allow editing DRAFT or REJECTED entries
-  if (!EDITABLE_STATUSES.includes(existing.status)) {
+  // Contractors can edit draft, rejected, or submitted (pre-approval) entries
+  if (user.role === "CONTRACTOR" && !isContractorEditableStatus(existing.status)) {
+    return NextResponse.json(
+      { error: `Cannot edit a timesheet with status ${existing.status}` },
+      { status: 400 }
+    );
+  }
+
+  // Admins editing via this route still limited to editable statuses
+  if (user.role !== "CONTRACTOR" && !isContractorEditableStatus(existing.status)) {
     return NextResponse.json(
       { error: `Cannot edit a timesheet with status ${existing.status}` },
       { status: 400 }
@@ -119,11 +126,17 @@ export async function PATCH(
   }
 
   const newStatus = existing.status === "REJECTED" ? "DRAFT" : existing.status;
+  const keepSubmitted = existing.status === "SUBMITTED";
+  const resolvedEntryDate = entryDate
+    ? new Date(entryDate)
+    : start
+    ? new Date(start)
+    : existing.entryDate;
 
   const updated = await db.timesheet.update({
     where: { id },
     data: {
-      entryDate: entryDate ? new Date(entryDate) : existing.entryDate,
+      entryDate: resolvedEntryDate,
       startTime: parsedGames && parsedGames > 0 ? null : start,
       endTime: parsedGames && parsedGames > 0 ? null : end,
       breakMinutes: breakMinutes ?? existing.breakMinutes,
@@ -135,6 +148,7 @@ export async function PATCH(
       eventId: eventId || null,
       notes: notes ?? existing.notes,
       status: newStatus,
+      submittedAt: keepSubmitted ? new Date() : existing.submittedAt,
       approvedById: newStatus === "DRAFT" ? null : existing.approvedById,
       approvedAt: newStatus === "DRAFT" ? null : existing.approvedAt,
     },

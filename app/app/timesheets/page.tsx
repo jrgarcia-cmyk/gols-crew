@@ -11,13 +11,12 @@ import {
 import { isPerGamePayType, PAY_TYPE_LABELS } from "@/lib/pay-type";
 import { getWeekStart, shiftDate } from "@/lib/week";
 import { getWeekStartDay } from "@/lib/week-server";
+import { isContractorEditableStatus } from "@/lib/timesheet-edit";
 import { formatCurrency } from "@/lib/utils";
 import { Badge, statusBadge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { SubmitWeekButton } from "./submit-week-button";
-
-const EDITABLE_STATUSES = ["DRAFT", "REJECTED"];
 
 function formatTime(dt: Date | null) {
   if (!dt) return "—";
@@ -234,8 +233,8 @@ export default async function ContractorTimesheetsPage() {
                             </p>
                           )}
 
-                              {EDITABLE_STATUSES.includes(entry.status) && (
-                            <div className="mt-2 pt-2 border-t border-gray-50">
+                              {isContractorEditableStatus(entry.status) && (
+                            <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between gap-2">
                               <Link
                                 href={`/app/timesheets/edit/${entry.id}`}
                                 className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-red-600 transition-colors w-fit"
@@ -245,6 +244,9 @@ export default async function ContractorTimesheetsPage() {
                                 </svg>
                                 Edit
                               </Link>
+                              {entry.status === "SUBMITTED" && (
+                                <span className="text-xs text-gray-400">Editable until approved</span>
+                              )}
                             </div>
                           )}
                         </CardContent>
